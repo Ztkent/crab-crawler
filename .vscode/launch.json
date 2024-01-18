@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "start crabbin'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=crab-crawler",
+                    "--package=crab-crawler"
+                ],
+                "filter": {
+                    "name": "crab-crawler",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+        }
+    ]
+}
