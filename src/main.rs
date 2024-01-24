@@ -22,6 +22,7 @@ const LIVE_LOGGING: bool = false;
 
 /*
 This is a rust web crawler. It starts from a given URL and follows all links to whitelisted domains.
+With some adjustments, it can be used to collect training data.
 
 Constants:
 - `PERMITTED_DOMAINS`: An array of domain names that the crawler is allowed to visit. The crawler will only follow links that lead to these domains.
@@ -48,7 +49,21 @@ struct Visited {
     visited_at: Instant,
 }
 
+// Struct to hold all the different types of URLs
+struct Urls {
+    link_urls: Vec<String>,
+    // img_urls: Vec<String>,
+    // stylesheet_urls: Vec<String>,
+    // script_urls: Vec<String>,
+    // object_data_urls: Vec<String>,
+    // embed_urls: Vec<String>,
+    // video_urls: Vec<String>,
+    // audio_urls: Vec<String>,
+    // source_urls: Vec<String>,
+}
+
 fn main() {
+    // Start crawling
     let visited: Arc<Mutex<HashMap<String, Visited>>> = Arc::new(Mutex::new(HashMap::new()));    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(MAX_THREADS).build().unwrap());
     timed_crawl_website(pool,STARTING_URL.to_string(), visited.clone());
 
@@ -56,6 +71,7 @@ fn main() {
     let mut visits: Vec<(String, Visited)> = visited.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     visits.sort_by(|a, b| a.1.visited_at.cmp(&b.1.visited_at));
     
+    // Print the visited URLs
     println!("Visited URLs:");
     for visit in visits {
         println!("{} - > {}", visit.1.referrer, visit.1.url);
@@ -92,24 +108,41 @@ fn parse_html(html: &str) -> Result<Html, Box<dyn std::error::Error>> {
     return Ok(document);
 }
 
-// Extract all links and image URLs from parsed HTML
-fn extract_links(doc: &Html) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    // Create a Vec to store the URLs
+// Helper function to extract attributes from elements that match a selector
+fn extract_attributes(doc: &Html, selector_str: &str, attr: &str) -> Vec<String> {
     let mut urls = Vec::new();
-    
-    // Create a Selector to select a elements with a href attribute
-    let selector = Selector::parse("a[href]").unwrap();
-    
-    // Iterate over each element that matches the selector
+    let selector = Selector::parse(selector_str).unwrap();
     for element in doc.select(&selector) {
-        // Try to get the href attribute of the element
-        // If it exists, add the attribute value (the URL) to the Vec
-        match element.value().attr("href") {
-            Some(url) => urls.push(url.to_string()),
-            None => (),
+        if let Some(url) = element.value().attr(attr) {
+            urls.push(url.to_string());
         }
     }
-   return Ok(urls);
+    return urls
+}
+
+// Extract all links and image URLs from parsed HTML
+fn extract_links(doc: &Html) -> Result<Urls, Box<dyn std::error::Error>> {
+    let link_urls = extract_attributes(doc, "a[href]", "href");
+    // let img_urls = extract_attributes(doc, "img[src]", "src");
+    // let stylesheet_urls = extract_attributes(doc, "link[rel=stylesheet][href]", "href");
+    // let script_urls = extract_attributes(doc, "script[src]", "src");
+    // let object_data_urls = extract_attributes(doc, "object[data]", "data");
+    // let embed_urls = extract_attributes(doc, "embed[src]", "src");
+    // let video_urls = extract_attributes(doc, "video[src]", "src");
+    // let audio_urls = extract_attributes(doc, "audio[src]", "src");
+    // let source_urls = extract_attributes(doc, "source[src]", "src");
+
+    Ok(Urls {
+        link_urls,
+        // img_urls,
+        // stylesheet_urls,
+        // script_urls,
+        // object_data_urls,
+        // embed_urls,
+        // video_urls,
+        // audio_urls,
+        // source_urls,
+    })
 }
 
 fn is_valid_site(url: &str) -> bool {
@@ -193,7 +226,8 @@ fn crawl_website(pool:Arc<ThreadPool>, target_url: String, referer_url: String, 
     // Recursively crawl each link
     // This is thread-safe, and will never run more than MAX_THREADS concurrent requests.
     pool.install(|| {
-        links.into_par_iter().for_each(|link| {
+        // Handle the links
+        links.link_urls.into_par_iter().for_each(|link| {
             if is_valid_site(&link) {
                 let visited = Arc::clone(&visited);
                 let pool = Arc::clone(&pool);
