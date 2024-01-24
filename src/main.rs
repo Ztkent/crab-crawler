@@ -2,7 +2,7 @@ use reqwest::blocking::Client;
 use reqwest::Error;
 use reqwest::Url;
 use scraper::{Html, Selector};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use rayon::ThreadPoolBuilder;
 use rayon::ThreadPool;
@@ -10,14 +10,15 @@ use rayon::prelude::*;
 use std::time::Instant;
 use regex::Regex;
 
+const STARTING_URL: &str = "https://www.cnn.com";
 const PERMITTED_DOMAINS: [&str; 1] = ["www.cnn.com"];
 const BLACKLIST_DOMAINS: [&str; 0] = [];
 const FREE_CRAWL: bool = true;
 
-const STARTING_URL: &str = "https://www.cnn.com";
 const MAX_URLS_TO_VISIT: usize = 25;
 const MAX_THREADS: usize = 5;
 const DEBUG: bool = false;
+const LIVE_LOGGING: bool = false;
 
 /*
 This is a rust web crawler. It starts from a given URL and follows all links to whitelisted domains.
@@ -29,7 +30,8 @@ Constants:
 - `STARTING_URL`: The URL that the crawler starts from.
 - `MAX_URLS_TO_VISIT`: The maximum number of URLs that the crawler will visit before stopping.
 - `MAX_THREADS`: The maximum number of threads that the crawler will use.
-- `DEBUG`: A boolean that, if true, enables debug output.
+- `DEBUG`: A boolean that enables debug output.
+- `LIVE_LOGGING`: A boolean that will log all URLs as they are visited.
 
 Output:
 - The program outputs the URLs of all visited pages to the console. If an error occurs, it outputs an error message.
@@ -39,15 +41,24 @@ It keeps track of visited URLs in a thread-safe hash set.
 It uses the `reqwest` crate to send HTTP requests, and `scraper` crate to parse HTML and extract links.
 */
 
-fn main() {
-    let visited: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(MAX_THREADS).build().unwrap());
+#[derive(Clone)]
+struct Visited {
+    url: String,
+    referrer: String,
+    visited_at: Instant,
+}
 
+fn main() {
+    let visited: Arc<Mutex<HashMap<String, Visited>>> = Arc::new(Mutex::new(HashMap::new()));    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(MAX_THREADS).build().unwrap());
     timed_crawl_website(pool,STARTING_URL.to_string(), visited.clone());
 
+    // Convert the HashMap to a Vec so that we can sort it
+    let mut visits: Vec<(String, Visited)> = visited.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    visits.sort_by(|a, b| a.1.visited_at.cmp(&b.1.visited_at));
+    
     println!("Visited URLs:");
-    for url in visited.lock().unwrap().iter() {
-        println!("{}", url);
+    for visit in visits {
+        println!("{} - > {}", visit.1.referrer, visit.1.url);
     }
 }
 
@@ -127,7 +138,7 @@ fn is_valid_site(url: &str) -> bool {
 }
 
 // Crawl a website, collecting links.
-fn crawl_website(pool:Arc<ThreadPool>, url: String, visited: Arc<Mutex<HashSet<String>>>) {
+fn crawl_website(pool:Arc<ThreadPool>, target_url: String, referer_url: String, visited: Arc<Mutex<HashMap<String, Visited>>>) {
     if visited.lock().unwrap().len() >= MAX_URLS_TO_VISIT {
         // Base Case
         return;
@@ -135,21 +146,28 @@ fn crawl_website(pool:Arc<ThreadPool>, url: String, visited: Arc<Mutex<HashSet<S
     
     // Remove the protocol, trailing slash, and tracking information from the URL
     let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
-    let visited_url = re.replace(&url.clone(), "$2").trim_end_matches('/').to_string();
-    if visited.lock().unwrap().contains(&visited_url) {
-        // If the URL is in the visited set
+    let visited_url = re.replace(&target_url.clone(), "$2").trim_end_matches('/').to_string();
+    if visited_url != STARTING_URL && visited.lock().unwrap().contains_key(&visited_url) {
+        // If the URL is in the visited set, skip it.
         return;
     } else {
         // Otherwise, add the URL to the visited set
-        eprintln!("Visiting {}", visited_url);
-        visited.lock().unwrap().insert(visited_url);
+        if LIVE_LOGGING {
+            println!("Visiting {}", visited_url);
+        }
+        let visited_site = Visited {
+            url: target_url.clone(),
+            referrer: referer_url.clone(),
+            visited_at: Instant::now(),
+        };
+        visited.lock().unwrap().insert(visited_url, visited_site);
     }
 
     // Fetch the HTML content of the page
-    let html = match fetch_html(&url) {
+    let html = match fetch_html(&target_url) {
         Ok(html) => html,
         Err(e) => {
-            eprintln!("Failed to fetch HTML from {}: {}", url, e);
+            eprintln!("Failed to fetch HTML from {}: {}", target_url, e);
             return;
         }
     };
@@ -167,7 +185,7 @@ fn crawl_website(pool:Arc<ThreadPool>, url: String, visited: Arc<Mutex<HashSet<S
     let links = match extract_links(&doc) {
         Ok(links) => links,
         Err(e) => {
-            eprintln!("Failed to extract links from {}: {}", url, e);
+            eprintln!("Failed to extract links from {}: {}", target_url, e);
             return;
         }
     };
@@ -179,15 +197,15 @@ fn crawl_website(pool:Arc<ThreadPool>, url: String, visited: Arc<Mutex<HashSet<S
             if is_valid_site(&link) {
                 let visited = Arc::clone(&visited);
                 let pool = Arc::clone(&pool);
-                crawl_website(pool, link, visited);
+                crawl_website(pool, link, target_url.clone(),visited);
             }
         });
     });
 }
 
-fn timed_crawl_website(pool: Arc<ThreadPool>, url: String, visited: Arc<Mutex<HashSet<String>>>) {
+fn timed_crawl_website(pool: Arc<ThreadPool>, url: String, visited: Arc<Mutex<HashMap<String, Visited>>>) {
     let start = Instant::now();
-    crawl_website(pool, url, visited);
+    crawl_website(pool, url, "STARTING_URL".to_string(), visited);
     let duration = start.elapsed();
     println!("Time elapsed in crawl_website() is: {:?}", duration);
 }
