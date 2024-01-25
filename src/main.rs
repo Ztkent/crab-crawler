@@ -9,6 +9,7 @@ use rayon::ThreadPool;
 use rayon::prelude::*;
 use std::time::Instant;
 use regex::Regex;
+use rusqlite::{Connection, Result};
 
 const STARTING_URL: &str = "https://www.cnn.com";
 const PERMITTED_DOMAINS: [&str; 1] = ["www.cnn.com"];
@@ -38,7 +39,7 @@ Output:
 - The program outputs the URLs of all visited pages to the console. If an error occurs, it outputs an error message.
 
 The crawler uses a thread pool to visit multiple URLs concurrently.
-It keeps track of visited URLs in a thread-safe hash set. 
+It keeps track of visited URLs in a thread-safe hash map. 
 It uses the `reqwest` crate to send HTTP requests, and `scraper` crate to parse HTML and extract links.
 */
 
@@ -63,6 +64,15 @@ struct Urls {
 }
 
 fn main() {
+    // Connect to sqlite
+    let resultsDB = match Connection::open("src/crawl_results.db") {
+        Ok(conn) => conn,
+        Err(e) => {
+            eprintln!("{:?}", e);
+            return
+        }
+    };
+
     // Start crawling
     let visited: Arc<Mutex<HashMap<String, Visited>>> = Arc::new(Mutex::new(HashMap::new()));    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(MAX_THREADS).build().unwrap());
     timed_crawl_website(pool,STARTING_URL.to_string(), visited.clone());
