@@ -6,7 +6,7 @@ use std::collections::HashMap;
 // Connect to the sqlite database, and run any migrations
 pub(crate) fn connect_sqlite_and_migrate() -> Result<Connection, Box<dyn std::error::Error>> {
     // Connect to sqlite
-    let results_db = Connection::open("src/db/crawl_results.db")?;
+    let results_db = Connection::open("db/crawl_results.db")?;
 
     // Get all .sql files in the db directory
     let migrations = get_sorted_migration_files()?;
@@ -21,7 +21,7 @@ pub(crate) fn connect_sqlite_and_migrate() -> Result<Connection, Box<dyn std::er
 // Get the contents of the sql migrations from the /db folder
 fn get_sorted_migration_files() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let mut migrations: HashMap<String, String> = HashMap::new();
-    let paths = fs::read_dir("src/db")?
+    let paths = fs::read_dir("db")?
         .map(|entry| entry.map(|e| e.path()))
         .collect::<Result<Vec<_>, std::io::Error>>()?;
     for path in paths {
