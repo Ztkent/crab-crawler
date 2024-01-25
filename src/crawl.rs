@@ -53,7 +53,7 @@ struct SiteUrls {
     // source_urls: Vec<String>,
 }
 
-// Crawl a website, collecting links.
+// Recursively crawl a website, collecting links.
 fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_url: String, referer_url: String) -> bool {
     if URLS_VISITED.load(Ordering::SeqCst) >= consts::MAX_URLS_TO_VISIT {
         // Base Case
@@ -116,12 +116,14 @@ fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_
 
     // Recursively crawl each link
     // This is thread-safe, and will never run more than MAX_THREADS concurrent requests.
+    let success = Arc::new(Mutex::new(true));
     pool.install(|| {
         // Handle the links
         let complete = links.link_urls.into_par_iter().try_for_each(|link| {
             if is_valid_site(&link) {
                 let pool = Arc::clone(&pool);
                 if !crawl_website(db_conn.clone(), pool, link, visited_url.clone()) {
+                    *success.lock().unwrap() = false;
                     return Err(());
                 }
             }
@@ -138,7 +140,14 @@ fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_
             };
         }
     });
-    return true;
+
+    // Check if we successfully set all of the child pages
+    // If so, then we can mark this page as complete
+    if success.lock().unwrap().clone() {
+        return true;
+    } else {
+        return false;
+    }
 }
     
 
