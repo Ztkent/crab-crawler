@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS visited (
     url TEXT NOT NULL,
     referrer TEXT NOT NULL,
     last_visited_at TIMESTAMP NOT NULL,
+    is_complete BOOLEAN NOT NULL DEFAULT 0,
     UNIQUE(url)
 );
 

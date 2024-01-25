@@ -53,6 +53,96 @@ struct SiteUrls {
     // source_urls: Vec<String>,
 }
 
+// Crawl a website, collecting links.
+fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_url: String, referer_url: String) -> bool {
+    if URLS_VISITED.load(Ordering::SeqCst) >= consts::MAX_URLS_TO_VISIT {
+        // Base Case
+        return false;
+    }
+    
+    // Remove the protocol, trailing slash, and tracking information from the URL
+    let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
+    let visited_url = re.replace(&target_url.clone(), "$2").trim_end_matches('/').to_string();
+    
+    { // Limit the scope of the mutex lock
+        let mut conn: std::sync::MutexGuard<'_, Connection> = db_conn.lock().unwrap();
+        if referer_url != "STARTING_URL" && sqlite::is_previously_visited_url(&mut conn, &visited_url).unwrap().unwrap() {
+            // Check if we've already visited this URL, then skip it.
+            return true;
+        } else {
+            // Otherwise, add the URL to the visited set
+            if consts::LIVE_LOGGING {
+                println!("Visiting {}", visited_url);
+            }
+
+            let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), Local::now());
+            // Add the visited URL to the database
+            URLS_VISITED.fetch_add(1, Ordering::SeqCst);
+            if consts::SQLITE_ENABLED {
+                if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
+                    if consts::DEBUG {
+                        eprintln!("Failed to insert visited URL {} into SQLite: {}",visited_url.clone(), e);
+                    }
+                }
+            }
+        }
+    }
+    // Fetch the HTML content of the page
+    let html = match fetch_html(&target_url) {
+        Ok(html) => html,
+        Err(e) => {
+            eprintln!("Failed to fetch HTML from {}: {}", target_url, e);
+            return true;
+        }
+    };
+
+    // Parse the HTML content into a Html object
+    let doc = match parse_html(&html) {
+        Ok(doc) => doc,
+        Err(e) => {
+            eprintln!("Failed to parse HTML: {}", e);
+            return true;
+        }
+    };
+
+    // Extract the links from the Html object
+    let links = match extract_links(&doc) {
+        Ok(links) => links,
+        Err(e) => {
+            eprintln!("Failed to extract links from {}: {}", target_url, e);
+            return true;
+        }
+    };
+
+    // Recursively crawl each link
+    // This is thread-safe, and will never run more than MAX_THREADS concurrent requests.
+    pool.install(|| {
+        // Handle the links
+        let complete = links.link_urls.into_par_iter().try_for_each(|link| {
+            if is_valid_site(&link) {
+                let pool = Arc::clone(&pool);
+                if !crawl_website(db_conn.clone(), pool, link, visited_url.clone()) {
+                    return Err(());
+                }
+            }
+            return Ok(());
+        });
+
+        // Mark the page as finished in sqlite
+        if let Ok(_) = complete {
+            match sqlite::mark_url_complete(&mut db_conn.lock().unwrap(), &visited_url){
+                Ok(_) => {},
+                Err(e) => {
+                    eprintln!("Failed to mark URL {} as complete in SQLite: {}", visited_url, e);
+                }
+            };
+        }
+    });
+    return true;
+}
+    
+
+
 // Fetch HTML from a given URL
 fn fetch_html(url: &str) -> Result<String, Error> {
     // Create a new HTTP client
@@ -143,80 +233,6 @@ fn is_valid_site(url: &str) -> bool {
         }
     }
     return false;
-}
-
-// Crawl a website, collecting links.
-fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_url: String, referer_url: String) {
-    if URLS_VISITED.load(Ordering::SeqCst) >= consts::MAX_URLS_TO_VISIT {
-        // Base Case
-        return;
-    }
-    
-    // Remove the protocol, trailing slash, and tracking information from the URL
-    let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
-    let visited_url = re.replace(&target_url.clone(), "$2").trim_end_matches('/').to_string();
-    
-    { // Limit the scope of the mutex lock
-        let mut conn: std::sync::MutexGuard<'_, Connection> = db_conn.lock().unwrap();
-        if referer_url != "STARTING_URL" && sqlite::is_previously_visited_url(&mut conn, &visited_url).unwrap().unwrap() {
-            // Check if we've already visited this URL, then skip it.
-            return;  
-        } else {
-            // Otherwise, add the URL to the visited set
-            if consts::LIVE_LOGGING {
-                println!("Visiting {}", visited_url);
-            }
-            let visited_at = Local::now();
-            let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), visited_at.clone());
-            // Add the visited URL to the database
-            if consts::SQLITE_ENABLED {
-                if let Err(e) = sqlite::insert_visited_url(&mut conn, visited_site.clone()) {
-                    if consts::DEBUG {
-                        eprintln!("Failed to insert visited URL {} into SQLite: {}",visited_url.clone(), e);
-                    }
-                }
-            }
-            URLS_VISITED.fetch_add(1, Ordering::SeqCst);
-        }
-    }
-    // Fetch the HTML content of the page
-    let html = match fetch_html(&target_url) {
-        Ok(html) => html,
-        Err(e) => {
-            eprintln!("Failed to fetch HTML from {}: {}", target_url, e);
-            return;
-        }
-    };
-
-    // Parse the HTML content into a Html object
-    let doc = match parse_html(&html) {
-        Ok(doc) => doc,
-        Err(e) => {
-            eprintln!("Failed to parse HTML: {}", e);
-            return;
-        }
-    };
-
-    // Extract the links from the Html object
-    let links = match extract_links(&doc) {
-        Ok(links) => links,
-        Err(e) => {
-            eprintln!("Failed to extract links from {}: {}", target_url, e);
-            return;
-        }
-    };
-
-    // Recursively crawl each link
-    // This is thread-safe, and will never run more than MAX_THREADS concurrent requests.
-    pool.install(|| {
-        // Handle the links
-        links.link_urls.into_par_iter().for_each(|link| {
-            if is_valid_site(&link) {
-                let pool = Arc::clone(&pool);
-                crawl_website(db_conn.clone(), pool, link, visited_url.clone());
-            }
-        });
-    });
 }
 
 pub(crate) fn timed_crawl_website(db_conn: Connection, pool: Arc<ThreadPool>, url: String) {

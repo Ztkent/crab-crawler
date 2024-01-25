@@ -24,7 +24,8 @@ Constants:
 - `SQLITE_PATH`: The path to the SQLite database file.
 
 Output:
-- The program outputs the URLs of all visited pages to the console. If an error occurs, it outputs an error message.
+- The program outputs the URLs of all visited pages to a sqlite db. If an error occurs, it outputs an error message.
+- The program outputs the number of URLs visited to the console.
 */
 
 fn main() {
