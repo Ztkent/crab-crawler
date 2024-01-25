@@ -1,10 +1,7 @@
 # 🦀 crab-crawler 🦀 
-
 This is a rust web crawler, it is designed to collect training data.  
-It that starts from a given URL and follows all links to whitelisted domains.
 
 ## Constants
-
 - `PERMITTED_DOMAINS`: An array of domain names that the crawler is allowed to visit.
 - `BLACKLIST_DOMAINS`: An array of domain names that the crawler is banned from visiting.
 - `FREE_CRAWL`: A boolean that allows the crawler to visit any domain not in the blacklist.
@@ -17,16 +14,16 @@ It that starts from a given URL and follows all links to whitelisted domains.
 - `SQLITE_PATH`: The path to the SQLite database file.
 
 ## Output
-
-The program outputs the URLs of all visited pages to the console.
+The crawler outputs the URLs of all visited pages to the console.
 
 ### SQLite
-
-The program can also output the URLs of all visited pages to a SQLite database.  
+The crawler can also output the URLs of all visited pages to a SQLite database.  
 To enable this:
-- set `SQLITE_ENABLED` constant to `true`
-- set `SQLITE_PATH` constant to the path of the SQLite database file
+- set `SQLITE_ENABLED` to `true`
+- set `SQLITE_PATH` to the path of the SQLite database file
 
 ## Implementation
-
-The crawler uses a thread pool to visit multiple URLs concurrently. It keeps track of visited URLs in a thread-safe hash set. It uses the `reqwest` crate to send HTTP requests, and the `scraper` crate to parse HTML and extract links.
+- starts from a given URL and follows all links to whitelisted domains.  
+- uses a thread pool to visit multiple URLs concurrently.  
+- tracks visited URLs in a thread-safe hash map.  
+- stores data in a sqlite database for review.

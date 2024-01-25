@@ -13,7 +13,7 @@ This is a rust web crawler. It starts from a given URL and follows all links to 
 With some adjustments, it can be used to collect training data.
 
 Constants:
-- `PERMITTED_DOMAINS`: An array of domain names that the crawler is allowed to visit. The crawler will only follow links that lead to these domains.
+- `PERMITTED_DOMAINS`: An array of domain names that the crawler is allowed to visit.
 - `BLACKLIST_DOMAINS`: An array of domain names that the crawler is banned from visiting.
 - `FREE_CRAWL`: A boolean that, if true, allows the crawler to visit any domain. This will respect the Blacklist.
 - `STARTING_URL`: The URL that the crawler starts from.
@@ -26,10 +26,6 @@ Constants:
 
 Output:
 - The program outputs the URLs of all visited pages to the console. If an error occurs, it outputs an error message.
-
-The crawler uses a thread pool to visit multiple URLs concurrently.
-It keeps track of visited URLs in a thread-safe hash map. 
-It uses the `reqwest` crate to send HTTP requests, and `scraper` crate to parse HTML and extract links.
 */
 
 fn main() {
