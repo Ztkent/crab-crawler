@@ -21,6 +21,8 @@ Constants:
 - `MAX_THREADS`: The maximum number of threads that the crawler will use.
 - `DEBUG`: A boolean that enables debug output.
 - `LIVE_LOGGING`: A boolean that will log all URLs as they are visited.
+- `SQLITE_ENABLED`: A boolean that enables pushing results to SQLite.
+- `SQLITE_PATH`: The path to the SQLite database file.
 
 Output:
 - The program outputs the URLs of all visited pages to the console. If an error occurs, it outputs an error message.

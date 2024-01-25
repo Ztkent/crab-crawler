@@ -12,3 +12,7 @@ pub(crate) const MAX_THREADS: usize = 5;
 // Logging Options
 pub(crate) const DEBUG: bool = false;
 pub(crate) const LIVE_LOGGING: bool = false;
+
+// Database Settings
+pub(crate) const SQLITE_ENABLED: bool = true;
+pub(crate) const SQLITE_PATH: &str = "db/crawl_resuts.db";

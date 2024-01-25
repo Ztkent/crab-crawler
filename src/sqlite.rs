@@ -1,12 +1,24 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, Result};
+use std::error::Error;
 use std::fs::{self, File};
 use std::io::Read;
 use std::collections::HashMap;
+use crate::constants as consts;
 
 // Connect to the sqlite database, and run any migrations
-pub(crate) fn connect_sqlite_and_migrate() -> Result<Connection, Box<dyn std::error::Error>> {
+pub(crate) fn connect_sqlite_and_migrate() -> Result<Option<Connection>, Box<dyn Error>> {
+    if !consts::SQLITE_ENABLED {
+        return Ok(None);
+    }
+
     // Connect to sqlite
-    let results_db = Connection::open("db/crawl_results.db")?;
+    let results_db = match Connection::open(consts::SQLITE_PATH) {
+        Ok(connection) => connection,
+        Err(e) => {
+            eprintln!("Failed to connect to SQLite: {}", e);
+            return Err(e.into())
+        }
+    };
 
     // Get all .sql files in the db directory
     let migrations = get_sorted_migration_files()?;
@@ -15,7 +27,7 @@ pub(crate) fn connect_sqlite_and_migrate() -> Result<Connection, Box<dyn std::er
     for migration in migrations {
         results_db.execute(&migration, [])?;
     }
-    Ok(results_db)
+    Ok(Some(results_db))
 }
 
 // Get the contents of the sql migrations from the /db folder
