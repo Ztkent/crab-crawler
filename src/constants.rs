@@ -15,4 +15,4 @@ pub(crate) const LIVE_LOGGING: bool = true;
 
 // Database Settings
 pub(crate) const SQLITE_ENABLED: bool = true;
-pub(crate) const SQLITE_PATH: &str = "db/crawl_resuts.db";
+pub(crate) const SQLITE_PATH: &str = "db/crawl_results.db";
