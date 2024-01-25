@@ -12,6 +12,7 @@ This is a rust web crawler, it is designed to collect training data.
 - `LIVE_LOGGING`: A boolean that will log all URLs as they are visited.
 - `SQLITE_ENABLED`: A boolean that enables SQLite output.
 - `SQLITE_PATH`: The path to the SQLite database file.
+- `ROTATE_USER_AGENT`: A boolean that enables user agent rotation.
 
 ## Output
 The crawler outputs the URLs of all visited pages to the console.
@@ -24,5 +25,7 @@ To enable this:
 
 ## Implementation
 - starts from a given URL and follows all links to whitelisted domains.  
-- uses a thread pool to visit multiple URLs concurrently.  
-- stores data in a sqlite database for review.
+- uses a thread pool to visit multiple URLs concurrently.
+- swaps the user agent between requests.
+- stores selected data in a sqlite database for review.
+

@@ -1,14 +1,11 @@
-use reqwest::blocking::Client;
-use reqwest::Error;
-use reqwest::Url;
+use reqwest::{blocking::Client, Error, Url, header::{self, HeaderValue}};
 use rusqlite::Connection;
 use scraper::{Html, Selector};
-use std::sync::{Arc, Mutex};
-use rayon::ThreadPool;
-use rayon::prelude::*;
+use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
+use rayon::{ThreadPool, prelude::*};
 use regex::Regex;
 use chrono::{Local, DateTime};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use rand::seq::SliceRandom;
 
 use crate::constants as consts;
 use crate::sqlite;
@@ -78,11 +75,9 @@ fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_
             let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), Local::now());
             // Add the visited URL to the database
             URLS_VISITED.fetch_add(1, Ordering::SeqCst);
-            if consts::SQLITE_ENABLED {
-                if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
-                    if consts::DEBUG {
-                        eprintln!("Failed to insert visited URL {} into SQLite: {}",visited_url.clone(), e);
-                    }
+            if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
+                if consts::DEBUG {
+                    eprintln!("Failed to insert visited URL {} into SQLite: {}",visited_url.clone(), e);
                 }
             }
         }
@@ -141,7 +136,7 @@ fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_
         }
     });
 
-    // Check if we successfully set all of the child pages
+    // Check if we successfully set all of the child pages.
     // If so, then we can mark this page as complete
     if success.lock().unwrap().clone() {
         return true;
@@ -157,11 +152,20 @@ fn fetch_html(url: &str) -> Result<String, Error> {
     // Create a new HTTP client
     let client = Client::new();
     
+    let mut user_agent = consts::USER_AGENT_CHROME;
+    if consts::ROTATE_USER_AGENT {
+        // Randomly pick a user agent from the list
+        user_agent = consts::USER_AGENTS.choose(&mut rand::thread_rng()).unwrap();
+    }
+    
     // Send a GET request to the specified URL and get a response
-    let res = client.get(url).send().map_err(|err| {
-        eprintln!("Failed to send request to {}: {}", url, err);
-        return err;
-    })?;
+    let res = client.get(url)
+        .header(header::USER_AGENT, HeaderValue::from_str(user_agent).unwrap())
+        .send()
+        .map_err(|err| {
+            eprintln!("Failed to send request to {}: {}", url, err);
+            return err;
+        })?;
     
     // Get the body of the response as a String
     let body = res.text().map_err(|err| {

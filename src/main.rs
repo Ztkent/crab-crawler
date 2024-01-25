@@ -1,6 +1,5 @@
 use std::sync::Arc;
-use rayon::ThreadPoolBuilder;
-use rayon::ThreadPool;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
 mod crawl;
 mod sqlite;
@@ -22,6 +21,7 @@ Constants:
 - `LIVE_LOGGING`: A boolean that will log all URLs as they are visited.
 - `SQLITE_ENABLED`: A boolean that enables pushing results to SQLite. 
 - `SQLITE_PATH`: The path to the SQLite database file.
+- `ROTATE_USER_AGENT`: A boolean that enables user agent rotation.
 
 Output:
 - The program outputs the URLs of all visited pages to a sqlite db. If an error occurs, it outputs an error message.

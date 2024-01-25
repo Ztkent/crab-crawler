@@ -16,6 +16,7 @@ rayon = "*"
 regex = "*"
 chrono = "*"
 rusqlite = {version = "*", features = ["bundled"]}
+rand = "*"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 # A good example toml: https://github.com/seanmonstar/reqwest/blob/master/Cargo.toml

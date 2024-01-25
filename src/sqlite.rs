@@ -48,16 +48,6 @@ pub(crate) fn is_previously_visited_url(conn: &Connection, url: &String) -> Resu
     }
 }
 
-// pub(crate) fn is_complete_visited_url(conn: &Connection, url: &String) -> Result<Option<bool>, Box<dyn Error>> {
-//     let mut stmt = conn.prepare("SELECT 1 FROM visited WHERE url = ?1 AND is_complete = 1 LIMIT 1")?;
-//     let mut rows = stmt.query(&[url])?;
-//     let row = rows.next()?;
-//     match row {
-//         Some(_) => Ok(Some(true)),
-//         None => Ok(Some(false))
-//     }
-// }
-
 // Get the contents of the sql migrations from the /db folder
 fn get_sorted_migration_files() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let mut migrations: HashMap<String, String> = HashMap::new();
