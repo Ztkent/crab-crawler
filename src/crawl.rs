@@ -11,12 +11,12 @@ use regex::Regex;
 use crate::constants as consts;
 
 #[derive(Clone)]
-pub(crate) struct Visited {
+pub(crate) struct VisitedSite {
     url: String,
     referrer: String,
     visited_at: Instant,
 }
-impl Visited {
+impl VisitedSite {
     // This is a constructor method that creates a new instance of Visited.
     pub fn new(url: String, referrer: String, visited_at: Instant) -> Self {
         Self { url, referrer, visited_at }
@@ -37,7 +37,7 @@ impl Visited {
 }
 
 // Struct to hold all the different types of URLs
-struct Urls {
+struct SiteUrls {
     link_urls: Vec<String>,
     // img_urls: Vec<String>,
     // stylesheet_urls: Vec<String>,
@@ -92,7 +92,7 @@ fn extract_attributes(doc: &Html, selector_str: &str, attr: &str) -> Vec<String>
 }
 
 // Extract all links and image URLs from parsed HTML
-fn extract_links(doc: &Html) -> Result<Urls, Box<dyn std::error::Error>> {
+fn extract_links(doc: &Html) -> Result<SiteUrls, Box<dyn std::error::Error>> {
     let link_urls = extract_attributes(doc, "a[href]", "href");
     // let img_urls = extract_attributes(doc, "img[src]", "src");
     // let stylesheet_urls = extract_attributes(doc, "link[rel=stylesheet][href]", "href");
@@ -103,7 +103,7 @@ fn extract_links(doc: &Html) -> Result<Urls, Box<dyn std::error::Error>> {
     // let audio_urls = extract_attributes(doc, "audio[src]", "src");
     // let source_urls = extract_attributes(doc, "source[src]", "src");
 
-    Ok(Urls {
+    Ok(SiteUrls {
         link_urls,
         // img_urls,
         // stylesheet_urls,
@@ -142,7 +142,7 @@ fn is_valid_site(url: &str) -> bool {
 }
 
 // Crawl a website, collecting links.
-fn crawl_website(pool:Arc<ThreadPool>, target_url: String, referer_url: String, visited: Arc<Mutex<HashMap<String, Visited>>>) {
+fn crawl_website(pool:Arc<ThreadPool>, target_url: String, referer_url: String, visited: Arc<Mutex<HashMap<String, VisitedSite>>>) {
     if visited.lock().unwrap().len() >= consts::MAX_URLS_TO_VISIT {
         // Base Case
         return;
@@ -159,7 +159,7 @@ fn crawl_website(pool:Arc<ThreadPool>, target_url: String, referer_url: String, 
         if consts::LIVE_LOGGING {
             println!("Visiting {}", visited_url);
         }
-        let visited_site = Visited::new(visited_url.clone(), referer_url.clone(), Instant::now());
+        let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), Instant::now());
         visited.lock().unwrap().insert(visited_url, visited_site);
     }
 
@@ -204,7 +204,7 @@ fn crawl_website(pool:Arc<ThreadPool>, target_url: String, referer_url: String, 
     });
 }
 
-pub(crate) fn timed_crawl_website(pool: Arc<ThreadPool>, url: String, visited: Arc<Mutex<HashMap<String, Visited>>>) {
+pub(crate) fn timed_crawl_website(pool: Arc<ThreadPool>, url: String, visited: Arc<Mutex<HashMap<String, VisitedSite>>>) {
     let start = Instant::now();
     crawl_website(pool, url, "STARTING_URL".to_string(), visited);
     let duration = start.elapsed();

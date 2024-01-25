@@ -41,11 +41,11 @@ fn main() {
     };
 
     // Start crawling
-    let visited: Arc<Mutex<HashMap<String, crawl::Visited>>> = Arc::new(Mutex::new(HashMap::new()));    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(consts::MAX_THREADS).build().unwrap());
+    let visited: Arc<Mutex<HashMap<String, crawl::VisitedSite>>> = Arc::new(Mutex::new(HashMap::new()));    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(consts::MAX_THREADS).build().unwrap());
     crawl::timed_crawl_website(pool,consts::STARTING_URL.to_string(), visited.clone());
 
     // Sort the visited URLs 
-    let mut visits: Vec<(String,crawl::Visited)> = visited.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let mut visits: Vec<(String,crawl::VisitedSite)> = visited.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     visits.sort_by(|a, b| a.1.visited_at().cmp(b.1.visited_at()));
     
     // Print the visited URLs
