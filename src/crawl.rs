@@ -1,24 +1,27 @@
 use reqwest::blocking::Client;
 use reqwest::Error;
 use reqwest::Url;
+use rusqlite::Connection;
 use scraper::{Html, Selector};
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use rayon::ThreadPool;
 use rayon::prelude::*;
-use std::time::Instant;
 use regex::Regex;
+use chrono::{Local, DateTime};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use crate::constants as consts;
+use crate::sqlite;
 
 #[derive(Clone)]
 pub(crate) struct VisitedSite {
     url: String,
     referrer: String,
-    visited_at: Instant,
+    visited_at: DateTime<Local>,
 }
 impl VisitedSite {
     // This is a constructor method that creates a new instance of Visited.
-    pub fn new(url: String, referrer: String, visited_at: Instant) -> Self {
+    pub fn new(url: String, referrer: String, visited_at: DateTime<Local>) -> Self {
         Self { url, referrer, visited_at }
     }
 
@@ -31,10 +34,11 @@ impl VisitedSite {
         &self.referrer
     }
 
-    pub fn visited_at(&self) -> &Instant {
+    pub fn visited_at(&self) -> &DateTime<Local> {
         &self.visited_at
     }
 }
+pub(crate) static URLS_VISITED: AtomicUsize = AtomicUsize::new(0);
 
 // Struct to hold all the different types of URLs
 struct SiteUrls {
@@ -142,8 +146,8 @@ fn is_valid_site(url: &str) -> bool {
 }
 
 // Crawl a website, collecting links.
-fn crawl_website(pool:Arc<ThreadPool>, target_url: String, referer_url: String, visited: Arc<Mutex<HashMap<String, VisitedSite>>>) {
-    if visited.lock().unwrap().len() >= consts::MAX_URLS_TO_VISIT {
+fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_url: String, referer_url: String) {
+    if URLS_VISITED.load(Ordering::SeqCst) >= consts::MAX_URLS_TO_VISIT {
         // Base Case
         return;
     }
@@ -151,18 +155,30 @@ fn crawl_website(pool:Arc<ThreadPool>, target_url: String, referer_url: String, 
     // Remove the protocol, trailing slash, and tracking information from the URL
     let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
     let visited_url = re.replace(&target_url.clone(), "$2").trim_end_matches('/').to_string();
-    if visited_url != consts::STARTING_URL && visited.lock().unwrap().contains_key(&visited_url) {
-        // If the URL is in the visited set, skip it.
-        return;
-    } else {
-        // Otherwise, add the URL to the visited set
-        if consts::LIVE_LOGGING {
-            println!("Visiting {}", visited_url);
+    
+    { // Limit the scope of the mutex lock
+        let mut conn: std::sync::MutexGuard<'_, Connection> = db_conn.lock().unwrap();
+        if referer_url != "STARTING_URL" && sqlite::is_previously_visited_url(&mut conn, &visited_url).unwrap().unwrap() {
+            // Check if we've already visited this URL, then skip it.
+            return;  
+        } else {
+            // Otherwise, add the URL to the visited set
+            if consts::LIVE_LOGGING {
+                println!("Visiting {}", visited_url);
+            }
+            let visited_at = Local::now();
+            let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), visited_at.clone());
+            // Add the visited URL to the database
+            if consts::SQLITE_ENABLED {
+                if let Err(e) = sqlite::insert_visited_url(&mut conn, visited_site.clone()) {
+                    if consts::DEBUG {
+                        eprintln!("Failed to insert visited URL {} into SQLite: {}",visited_url.clone(), e);
+                    }
+                }
+            }
+            URLS_VISITED.fetch_add(1, Ordering::SeqCst);
         }
-        let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), Instant::now());
-        visited.lock().unwrap().insert(visited_url, visited_site);
     }
-
     // Fetch the HTML content of the page
     let html = match fetch_html(&target_url) {
         Ok(html) => html,
@@ -196,17 +212,17 @@ fn crawl_website(pool:Arc<ThreadPool>, target_url: String, referer_url: String, 
         // Handle the links
         links.link_urls.into_par_iter().for_each(|link| {
             if is_valid_site(&link) {
-                let visited = Arc::clone(&visited);
                 let pool = Arc::clone(&pool);
-                crawl_website(pool, link, target_url.clone(),visited);
+                crawl_website(db_conn.clone(), pool, link, visited_url.clone());
             }
         });
     });
 }
 
-pub(crate) fn timed_crawl_website(pool: Arc<ThreadPool>, url: String, visited: Arc<Mutex<HashMap<String, VisitedSite>>>) {
-    let start = Instant::now();
-    crawl_website(pool, url, "STARTING_URL".to_string(), visited);
-    let duration = start.elapsed();
+pub(crate) fn timed_crawl_website(db_conn: Connection, pool: Arc<ThreadPool>, url: String) {
+    let start = Local::now();
+    let db_conn = Arc::new(Mutex::new(db_conn));
+    crawl_website(db_conn, pool, url, "STARTING_URL".to_string());
+    let duration = Local::now().signed_duration_since(start);
     println!("Time elapsed in crawl_website() is: {:?}", duration);
 }

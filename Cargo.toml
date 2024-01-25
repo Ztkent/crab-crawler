@@ -14,6 +14,7 @@ url = "*"
 tokio = {version = "*", features = ["full"]}
 rayon = "*"
 regex = "*"
+chrono = "*"
 rusqlite = {version = "*", features = ["bundled"]}
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

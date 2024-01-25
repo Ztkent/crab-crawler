@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use rayon::ThreadPoolBuilder;
 use rayon::ThreadPool;
 
@@ -21,7 +20,7 @@ Constants:
 - `MAX_THREADS`: The maximum number of threads that the crawler will use.
 - `DEBUG`: A boolean that enables debug output.
 - `LIVE_LOGGING`: A boolean that will log all URLs as they are visited.
-- `SQLITE_ENABLED`: A boolean that enables pushing results to SQLite.
+- `SQLITE_ENABLED`: A boolean that enables pushing results to SQLite. 
 - `SQLITE_PATH`: The path to the SQLite database file.
 
 Output:
@@ -30,8 +29,8 @@ Output:
 
 fn main() {
     // Connect to the SQLite database and run any migrations
-    let _ = match sqlite::connect_sqlite_and_migrate() {
-        Ok(connection) => connection,
+    let conn = match sqlite::connect_sqlite_and_migrate() {
+        Ok(connection) => connection.unwrap(),
         Err(e) => {
             eprintln!("Failed to connect to SQLite and migrate: {}", e);
             return;
@@ -39,16 +38,9 @@ fn main() {
     };
 
     // Start crawling
-    let visited: Arc<Mutex<HashMap<String, crawl::VisitedSite>>> = Arc::new(Mutex::new(HashMap::new()));    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(consts::MAX_THREADS).build().unwrap());
-    crawl::timed_crawl_website(pool,consts::STARTING_URL.to_string(), visited.clone());
+    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(consts::MAX_THREADS).build().unwrap());
+    crawl::timed_crawl_website(conn, pool, consts::STARTING_URL.to_string());
 
-    // Sort the visited URLs 
-    let mut visits: Vec<(String,crawl::VisitedSite)> = visited.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    visits.sort_by(|a, b| a.1.visited_at().cmp(b.1.visited_at()));
-    
-    // Print the visited URLs
-    println!("Visited URLs:");
-    for visit in visits {
-        println!("{} - > {}", visit.1.referrer(), visit.1.url());
-    }
+    // Print the number of URLs visited
+    println!("Visited {} URLs", crawl::URLS_VISITED.load(std::sync::atomic::Ordering::SeqCst));
 }

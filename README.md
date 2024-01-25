@@ -25,5 +25,4 @@ To enable this:
 ## Implementation
 - starts from a given URL and follows all links to whitelisted domains.  
 - uses a thread pool to visit multiple URLs concurrently.  
-- tracks visited URLs in a thread-safe hash map.  
 - stores data in a sqlite database for review.

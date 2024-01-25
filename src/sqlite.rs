@@ -4,36 +4,46 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::collections::HashMap;
 use crate::constants as consts;
+use crate::crawl;
 
 // Connect to the sqlite database, and run any migrations
 pub(crate) fn connect_sqlite_and_migrate() -> Result<Option<Connection>, Box<dyn Error>> {
+    // Connect to sqlite
+    let results_db;
     if !consts::SQLITE_ENABLED {
-        return Ok(None);
+        results_db = Connection::open_in_memory()?;
+    } else  {
+        results_db = Connection::open(consts::SQLITE_PATH)?;
     }
 
-    // Connect to sqlite
-    let results_db = match Connection::open(consts::SQLITE_PATH) {
-        Ok(connection) => connection,
-        Err(e) => {
-            eprintln!("Failed to connect to SQLite: {}", e);
-            return Err(e.into())
-        }
-    };
-
-    // Get all .sql files in the db directory
-    let migrations = get_sorted_migration_files()?;
-
     // Handle any migrations to setup the database
+    let migrations = get_sorted_migration_files()?;
     for migration in migrations {
         results_db.execute(&migration, [])?;
     }
     Ok(Some(results_db))
 }
 
+pub(crate) fn insert_visited_url(conn: &Connection, visited_site: crawl::VisitedSite) -> Result<(), Box<dyn Error>> {
+    let visited_at = visited_site.visited_at().format("%Y-%m-%d %H:%M:%S").to_string();
+    conn.execute("INSERT INTO visited (url, referrer, last_visited_at) VALUES (?1, ?2, ?3)", &[visited_site.url(),visited_site.referrer(),&visited_at])?;
+    Ok(())
+}
+
+pub(crate) fn is_previously_visited_url(conn: &Connection, url: &String) -> Result<Option<bool>, Box<dyn Error>> {
+    let mut stmt = conn.prepare("SELECT 1 FROM visited WHERE url = ?1 LIMIT 1")?;
+    let mut rows = stmt.query(&[url])?;
+    let row = rows.next()?;
+    match row {
+        Some(_) => Ok(Some(true)),
+        None => Ok(Some(false))
+    }
+}
+
 // Get the contents of the sql migrations from the /db folder
 fn get_sorted_migration_files() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let mut migrations: HashMap<String, String> = HashMap::new();
-    let paths = fs::read_dir("db")?
+    let paths = fs::read_dir("db/migrations")?
         .map(|entry| entry.map(|e| e.path()))
         .collect::<Result<Vec<_>, std::io::Error>>()?;
     for path in paths {
