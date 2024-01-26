@@ -57,5 +57,8 @@ fn main() {
     crawl::timed_crawl_website(conn, pool, starting_url);
 
     // Print the number of URLs visited
-    println!("Visited {} URLs", crawl::URLS_VISITED.load(std::sync::atomic::Ordering::SeqCst));
+    println!("Visited {} URLs.", crawl::URLS_VISITED.load(std::sync::atomic::Ordering::SeqCst));
+    if consts::SQLITE_ENABLED {
+        println!("DB Contains {:?} URLs, {:?} complete.", sqlite::connect_and_get_total_rows().unwrap(), sqlite::connect_and_get_completed_rows().unwrap());
+    }
 }

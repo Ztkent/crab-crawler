@@ -48,6 +48,44 @@ pub(crate) fn is_previously_visited_url(conn: &Connection, url: &String) -> Resu
     }
 }
 
+pub(crate) fn connect_and_get_total_rows() -> Result<u64, Box<dyn Error>> {
+    let results_db;
+    if !consts::SQLITE_ENABLED {
+        return Ok(0);
+    } else  {
+        results_db = Connection::open(consts::SQLITE_PATH)?;
+    }
+    let mut stmt = results_db.prepare("SELECT COUNT(*) FROM visited")?;
+    let mut rows = stmt.query([])?;
+
+    match rows.next()? {
+        Some(row) => {
+            let count: i64 = row.get(0)?;
+            Ok(count as u64)
+        },
+        None => Ok(0)
+    }
+}
+
+pub(crate) fn connect_and_get_completed_rows() -> Result<u64, Box<dyn Error>> {
+    let results_db;
+    if !consts::SQLITE_ENABLED {
+        return Ok(0);
+    } else  {
+        results_db = Connection::open(consts::SQLITE_PATH)?;
+    }
+    let mut stmt = results_db.prepare("SELECT COUNT(*) FROM visited WHERE is_complete = 1")?;
+    let mut rows = stmt.query([])?;
+
+    match rows.next()? {
+        Some(row) => {
+            let count: i64 = row.get(0)?;
+            Ok(count as u64)
+        },
+        None => Ok(0)
+    }
+}
+
 // Get the contents of the sql migrations from the /db folder
 fn get_sorted_migration_files() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let mut migrations: HashMap<String, String> = HashMap::new();
