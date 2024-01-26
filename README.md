@@ -38,6 +38,7 @@ To enable this:
 ## Implementation
 - starts from a given URL and follows all links to whitelisted domains.  
 - uses a thread pool to visit multiple URLs concurrently.
+- creates a thread-safe hash set of URLs seen on this run.
 - swaps the user agent between requests.
 - stores selected data in a sqlite database for review.
 

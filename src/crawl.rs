@@ -6,6 +6,7 @@ use rayon::{ThreadPool, prelude::*};
 use regex::Regex;
 use chrono::{Local, DateTime};
 use rand::seq::SliceRandom;
+use std::collections::HashSet;
 
 use crate::constants as consts;
 use crate::sqlite;
@@ -47,7 +48,7 @@ struct SiteUrls {
 }
 
 // Recursively crawl a website, with Depth-First Search.
-fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_url: Url, referer_url: String) -> bool {
+fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, seen: Arc<Mutex<HashSet<String>>>, target_url: &Url, referer_url: &String) -> bool {
     if URLS_VISITED.load(Ordering::SeqCst) >= consts::MAX_URLS_TO_VISIT {
         // Base Case
         return false;
@@ -107,8 +108,7 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, tar
             let (link_url, is_valid) = is_valid_site(&link);
             if is_valid {
                 if let Some(link_url) = link_url {
-                    let pool = Arc::clone(&pool);
-                    if !crawl_website_dfs(db_conn.clone(), pool, link_url, visited_url.clone()) {
+                    if !crawl_website_dfs(db_conn.clone(), pool.clone(), seen.clone(), &link_url, &visited_url) {
                         *success.lock().unwrap() = false;
                         return Err(());
                     }
@@ -246,7 +246,8 @@ fn is_valid_site(url: &str) -> (Option<Url>, bool) {
 pub(crate) fn timed_crawl_website(db_conn: Connection, pool: Arc<ThreadPool>, url: Url) {
     let start = Local::now();
     let db_conn = Arc::new(Mutex::new(db_conn));
-    crawl_website_dfs(db_conn, pool, url, "STARTING_URL".to_string());
+    let seen: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    crawl_website_dfs(db_conn, pool, seen, &url, &"STARTING_URL".to_string());
     let duration: chrono::Duration = Local::now().signed_duration_since(start);
     println!("Time elapsed in crawl_website() is: {:?}", duration);
 }
