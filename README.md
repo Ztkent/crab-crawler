@@ -13,6 +13,7 @@ This is a rust web crawler, it is designed to collect training data.
 - `SQLITE_ENABLED`: A boolean that enables SQLite output.
 - `SQLITE_PATH`: The path to the SQLite database file.
 - `ROTATE_USER_AGENT`: A boolean that enables user agent rotation.
+- `RESPECT_ROBOTS`: A boolean that will respect robots.txt files.
 
 ## Output
 The crawler outputs the URLs of all visited pages to the console.

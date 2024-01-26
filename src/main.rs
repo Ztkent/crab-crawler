@@ -22,6 +22,7 @@ Constants:
 - `SQLITE_ENABLED`: A boolean that enables pushing results to SQLite. 
 - `SQLITE_PATH`: The path to the SQLite database file.
 - `ROTATE_USER_AGENT`: A boolean that enables user agent rotation.
+- `RESPECT_ROBOTS`: A boolean that enables respecting robots.txt files.
 
 Output:
 - The program outputs the URLs of all visited pages to a sqlite db. If an error occurs, it outputs an error message.

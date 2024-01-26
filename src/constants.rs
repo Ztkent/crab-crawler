@@ -8,6 +8,7 @@ pub(crate) const FREE_CRAWL: bool = true;
 pub(crate) const MAX_URLS_TO_VISIT: usize = 250;
 pub(crate) const MAX_THREADS: usize = 5;
 pub(crate) const ROTATE_USER_AGENT: bool = true;
+pub(crate) const RESPECT_ROBOTS: bool = true;
 
 // Logging Options
 pub(crate) const DEBUG: bool = false;

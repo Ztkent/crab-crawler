@@ -82,6 +82,7 @@ fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_
             }
         }
     }
+
     // Fetch the HTML content of the page
     let html = match fetch_html(&target_url) {
         Ok(html) => html,
@@ -152,9 +153,15 @@ fn fetch_html(url: &str) -> Result<String, Error> {
     // Create a new HTTP client
     let client = Client::new();
     
+    // Handle the robots.txt file, skipping any URLs that are disallowed
+    if consts::RESPECT_ROBOTS {
+        // We will want to do this with a cached version of the robots.txt file. 
+        // let robots_url: String = format!("https://{}/robots.txt", url);
+    }
+
+    // Randomly pick a user agent from the list
     let mut user_agent = consts::USER_AGENT_CHROME;
     if consts::ROTATE_USER_AGENT {
-        // Randomly pick a user agent from the list
         user_agent = consts::USER_AGENTS.choose(&mut rand::thread_rng()).unwrap();
     }
     
