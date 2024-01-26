@@ -5,13 +5,14 @@ pub(crate) const BLACKLIST_DOMAINS: [&str; 0] = [];
 pub(crate) const FREE_CRAWL: bool = true;
 
 // Crawler Settings
-pub(crate) const MAX_URLS_TO_VISIT: usize = 250;
+pub(crate) const MAX_URLS_TO_VISIT: usize = 5;
 pub(crate) const MAX_THREADS: usize = 5;
 pub(crate) const ROTATE_USER_AGENT: bool = true;
 pub(crate) const RESPECT_ROBOTS: bool = true;
+pub(crate) const CRAWLER_REQUEST_TIMEOUT: u64 = 5; 
 
 // Logging Options
-pub(crate) const DEBUG: bool = false;
+pub(crate) const DEBUG: bool = true;
 pub(crate) const LIVE_LOGGING: bool = true;
 
 // Database Settings

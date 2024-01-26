@@ -1,4 +1,4 @@
-use reqwest::{blocking::Client, Error, Url, header::{self, HeaderValue}};
+use reqwest::{Error, Url, header::{self, HeaderValue}};
 use rusqlite::Connection;
 use scraper::{Html, Selector};
 use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
@@ -9,6 +9,7 @@ use rand::seq::SliceRandom;
 
 use crate::constants as consts;
 use crate::sqlite;
+use crate::tools;
 
 #[derive(Clone)]
 pub(crate) struct VisitedSite {
@@ -17,20 +18,15 @@ pub(crate) struct VisitedSite {
     visited_at: DateTime<Local>,
 }
 impl VisitedSite {
-    // This is a constructor method that creates a new instance of Visited.
     pub fn new(url: String, referrer: String, visited_at: DateTime<Local>) -> Self {
         Self { url, referrer, visited_at }
     }
-
-    // These are getter methods that return the value of each field.
     pub fn url(&self) -> &String {
         &self.url
     }
-
     pub fn referrer(&self) -> &String {
         &self.referrer
     }
-
     pub fn visited_at(&self) -> &DateTime<Local> {
         &self.visited_at
     }
@@ -50,44 +46,36 @@ struct SiteUrls {
     // source_urls: Vec<String>,
 }
 
-// Recursively crawl a website, collecting links.
-fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_url: String, referer_url: String) -> bool {
+// Recursively crawl a website, with Depth-First Search.
+fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_url: Url, referer_url: String) -> bool {
     if URLS_VISITED.load(Ordering::SeqCst) >= consts::MAX_URLS_TO_VISIT {
         // Base Case
         return false;
     }
     
-    // Remove the protocol, trailing slash, and tracking information from the URL
     let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
-    let visited_url = re.replace(&target_url.clone(), "$2").trim_end_matches('/').to_string();
+    let visited_url = re.replace(target_url.as_str(), "$2").trim_end_matches('/').to_string();
     
-    { // Limit the scope of the mutex lock
-        let mut conn: std::sync::MutexGuard<'_, Connection> = db_conn.lock().unwrap();
+    { // Scope the mutable borrow of db_conn
+        let mut conn = db_conn.lock().unwrap();
         if referer_url != "STARTING_URL" && sqlite::is_previously_visited_url(&mut conn, &visited_url).unwrap().unwrap() {
-            // Check if we've already visited this URL, then skip it.
+            tools::debug_log(&format!("Ignoring previously visited URL: {}", visited_url));
             return true;
-        } else {
-            // Otherwise, add the URL to the visited set
-            if consts::LIVE_LOGGING {
-                println!("Visiting {}", visited_url);
-            }
-
-            let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), Local::now());
-            // Add the visited URL to the database
-            URLS_VISITED.fetch_add(1, Ordering::SeqCst);
-            if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
-                if consts::DEBUG {
-                    eprintln!("Failed to insert visited URL {} into SQLite: {}",visited_url.clone(), e);
-                }
-            }
+        }
+        
+        // Insert the visited URL into SQLite
+        let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), Local::now());
+        URLS_VISITED.fetch_add(1, Ordering::SeqCst);
+        if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
+            tools::debug_log(&format!("Failed to insert visited URL {} into SQLite: {}", visited_url, e));
         }
     }
 
     // Fetch the HTML content of the page
-    let html = match fetch_html(&target_url) {
+    let html = match fetch_html(target_url.clone()) {
         Ok(html) => html,
         Err(e) => {
-            eprintln!("Failed to fetch HTML from {}: {}", target_url, e);
+            tools::debug_log(&format!("Failed to fetch HTML from {}: {}", target_url, e));
             return true;
         }
     };
@@ -96,7 +84,7 @@ fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_
     let doc = match parse_html(&html) {
         Ok(doc) => doc,
         Err(e) => {
-            eprintln!("Failed to parse HTML: {}", e);
+            tools::debug_log(&format!("Failed to parse HTML from {}: {}", target_url, e));
             return true;
         }
     };
@@ -105,7 +93,7 @@ fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_
     let links = match extract_links(&doc) {
         Ok(links) => links,
         Err(e) => {
-            eprintln!("Failed to extract links from {}: {}", target_url, e);
+            tools::debug_log(&format!("Failed to extract links from {}: {}", target_url, e));
             return true;
         }
     };
@@ -116,24 +104,24 @@ fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_
     pool.install(|| {
         // Handle the links
         let complete = links.link_urls.into_par_iter().try_for_each(|link| {
-            if is_valid_site(&link) {
-                let pool = Arc::clone(&pool);
-                if !crawl_website(db_conn.clone(), pool, link, visited_url.clone()) {
-                    *success.lock().unwrap() = false;
-                    return Err(());
+            let (link_url, is_valid) = is_valid_site(&link);
+            if is_valid {
+                if let Some(link_url) = link_url {
+                    let pool = Arc::clone(&pool);
+                    if !crawl_website_dfs(db_conn.clone(), pool, link_url, visited_url.clone()) {
+                        *success.lock().unwrap() = false;
+                        return Err(());
+                    }
                 }
             }
-            return Ok(());
+            Ok(())
         });
 
         // Mark the page as finished in sqlite
-        if let Ok(_) = complete {
-            match sqlite::mark_url_complete(&mut db_conn.lock().unwrap(), &visited_url){
-                Ok(_) => {},
-                Err(e) => {
-                    eprintln!("Failed to mark URL {} as complete in SQLite: {}", visited_url, e);
-                }
-            };
+        if complete.is_ok() {
+            if let Err(e) = sqlite::mark_url_complete(&mut db_conn.lock().unwrap(), &visited_url) {
+                tools::debug_log(&format!("Failed to mark URL {} as complete in SQLite: {}", visited_url, e));
+            }
         }
     });
 
@@ -141,17 +129,21 @@ fn crawl_website(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, target_
     // If so, then we can mark this page as complete
     if success.lock().unwrap().clone() {
         return true;
-    } else {
-        return false;
-    }
+    } 
+    // If we were not able to complete crawling this entire page and its child pages,
+    // then we need to let the recursive parent know by returning false.
+    false
 }
     
 
 
 // Fetch HTML from a given URL
-fn fetch_html(url: &str) -> Result<String, Error> {
+fn fetch_html(url: Url) -> Result<String, Error> {
     // Create a new HTTP client
-    let client = Client::new();
+    let client = reqwest::blocking::Client::builder()
+    .timeout(std::time::Duration::from_secs(consts::CRAWLER_REQUEST_TIMEOUT))
+    .build()
+    .unwrap();
     
     // Handle the robots.txt file, skipping any URLs that are disallowed
     if consts::RESPECT_ROBOTS {
@@ -165,32 +157,32 @@ fn fetch_html(url: &str) -> Result<String, Error> {
         user_agent = consts::USER_AGENTS.choose(&mut rand::thread_rng()).unwrap();
     }
     
+    // Print the URL that we are visiting
+    if consts::LIVE_LOGGING {
+        println!("Visiting {}", url);
+    }
+
     // Send a GET request to the specified URL and get a response
-    let res = client.get(url)
+    let res = client.get(url.clone())
         .header(header::USER_AGENT, HeaderValue::from_str(user_agent).unwrap())
         .send()
         .map_err(|err| {
-            eprintln!("Failed to send request to {}: {}", url, err);
-            return err;
+            err
         })?;
     
     // Get the body of the response as a String
     let body = res.text().map_err(|err| {
-        eprintln!("Failed to read response from {}: {}", url, err);
-        return err;
+        err
     })?;
     
     // Return the body of the response
-   return Ok(body);
+   Ok(body)
 }
 
 // Parse HTML content into a scraper::Html object
 fn parse_html(html: &str) -> Result<Html, Box<dyn std::error::Error>> {
-    // Parse the HTML content
     let document = Html::parse_document(html);
-    
-    // Return the parsed HTML
-    return Ok(document);
+    Ok(document)
 }
 
 // Helper function to extract attributes from elements that match a selector
@@ -202,7 +194,7 @@ fn extract_attributes(doc: &Html, selector_str: &str, attr: &str) -> Vec<String>
             urls.push(url.to_string());
         }
     }
-    return urls
+    urls
 }
 
 // Extract all links and image URLs from parsed HTML
@@ -230,35 +222,31 @@ fn extract_links(doc: &Html) -> Result<SiteUrls, Box<dyn std::error::Error>> {
     })
 }
 
-fn is_valid_site(url: &str) -> bool {
+fn is_valid_site(url: &str) -> (Option<Url>, bool) {
     if let Ok(parsed_url) = Url::parse(url) {
         // Check if the domain of the URL is in the list of permitted domains.
         if let Some(domain) = parsed_url.domain() {
             if (consts::FREE_CRAWL || consts::PERMITTED_DOMAINS.iter().any(|&d| domain.eq(d)))
                   && !consts::BLACKLIST_DOMAINS.iter().any(|&d| domain.eq(d)) {
-                return true;
+                return (Some(parsed_url), true);
             } else {
                 // If the domain isn't in the list of permitted domains, print an error message, and all of the other parsed_url fields
-                if consts::DEBUG {
-                    eprintln!("Domain {} isn't in the list of permitted domains: {:?}", domain, parsed_url);
-                }
-                return false;
+                tools::debug_log(&format!("Domain {} isn't in the list of permitted domains: {:?}", domain, parsed_url));
+                return (Some(parsed_url), false);
             }
         } else {
             // If the URL doesn't have a domain, print an error message, and all of the other parsed_url fields
-            if consts::DEBUG {
-                eprintln!("URL {} doesn't have a domain: {:?}", url, parsed_url);
-            }
-            return false;
+            tools::debug_log(&format!("URL {} doesn't have a domain", url));
+            return (Some(parsed_url), false);
         }
     }
-    return false;
+    (None, false)
 }
 
-pub(crate) fn timed_crawl_website(db_conn: Connection, pool: Arc<ThreadPool>, url: String) {
+pub(crate) fn timed_crawl_website(db_conn: Connection, pool: Arc<ThreadPool>, url: Url) {
     let start = Local::now();
     let db_conn = Arc::new(Mutex::new(db_conn));
-    crawl_website(db_conn, pool, url, "STARTING_URL".to_string());
-    let duration = Local::now().signed_duration_since(start);
+    crawl_website_dfs(db_conn, pool, url, "STARTING_URL".to_string());
+    let duration: chrono::Duration = Local::now().signed_duration_since(start);
     println!("Time elapsed in crawl_website() is: {:?}", duration);
 }
