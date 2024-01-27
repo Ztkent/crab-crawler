@@ -7,7 +7,6 @@ use std::{
     time::Duration,
 };
 
-mod tests;
 mod crawl;
 mod tools;
 mod sqlite;

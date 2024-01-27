@@ -143,7 +143,7 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
 }
 
 // Fetch HTML from a given URL
-pub(crate) fn fetch_html(url: Url) -> Result<String, Error> {
+fn fetch_html(url: Url) -> Result<String, Error> {
     // Create a new HTTP client
     let client = reqwest::blocking::Client::builder()
     .timeout(std::time::Duration::from_secs(consts::CRAWLER_REQUEST_TIMEOUT))
@@ -255,4 +255,51 @@ pub(crate) fn timed_crawl_website(db_conn: Connection, pool: Arc<ThreadPool>, ur
     crawl_website_dfs(db_conn, pool, seen, &url, &"STARTING_URL".to_string());
     let duration: chrono::Duration = Local::now().signed_duration_since(start);
     println!("Time elapsed in crawl_website() is: {:?}", duration);
+}
+
+
+// tests/crawl_tests.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use url::Url;
+
+    #[test]
+    fn test_fetch_html() {
+        let url = Url::parse("https://www.cnn.com").unwrap();
+        let result = fetch_html(url);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_html() {
+        let html = "<html><body><h1>Hello, world!</h1></body></html>";
+        let result = parse_html(html);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_attributes() {
+        let html = "<html><body><a href='https://www.cnn.com'>Link</a></body></html>";
+        let document = Html::parse_document(html);
+        let result = extract_attributes(&document, "a[href]", "href");
+        assert_eq!(result, vec!["https://www.cnn.com"]);
+    }
+
+    #[test]
+    fn test_extract_links() {
+        let html = "<html><body><a href='https://www.cnn.com'>Link</a></body></html>";
+        let document = Html::parse_document(html);
+        let result = extract_links(&document);
+        assert!(result.is_ok());
+        let site_urls = result.unwrap();
+        assert_eq!(site_urls.link_urls, vec!["https://www.cnn.com"]);
+    }
+
+    #[test]
+    fn test_is_valid_site() {
+        let url = "https://www.cnn.com";
+        let (_, is_valid) = is_valid_site(url);
+        assert!(is_valid);
+    }
 }
