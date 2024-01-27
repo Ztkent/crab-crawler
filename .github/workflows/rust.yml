@@ -11,12 +11,10 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
-    - name: Setup Rust
+    - name: Build CrabCrawler
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
@@ -26,6 +24,17 @@ jobs:
       with:
         command: build
         args: --verbose
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Test CrabCrawler
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
     - name: Test
       uses: actions-rs/cargo@v1
       with:
