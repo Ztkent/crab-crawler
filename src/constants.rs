@@ -5,7 +5,7 @@ pub(crate) const BLACKLIST_DOMAINS: [&str; 0] = [];
 pub(crate) const FREE_CRAWL: bool = false;
 
 // Crawler Settings
-pub(crate) const MAX_URLS_TO_VISIT: usize = 25;
+pub(crate) const MAX_URLS_TO_VISIT: usize = 50;
 pub(crate) const MAX_THREADS: usize = 5;
 pub(crate) const ROTATE_USER_AGENT: bool = true;
 pub(crate) const RESPECT_ROBOTS: bool = true;

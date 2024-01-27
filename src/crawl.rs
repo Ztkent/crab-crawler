@@ -141,11 +141,9 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     // then we need to let the recursive parent know by returning false.
     false
 }
-    
-
 
 // Fetch HTML from a given URL
-fn fetch_html(url: Url) -> Result<String, Error> {
+pub(crate) fn fetch_html(url: Url) -> Result<String, Error> {
     // Create a new HTTP client
     let client = reqwest::blocking::Client::builder()
     .timeout(std::time::Duration::from_secs(consts::CRAWLER_REQUEST_TIMEOUT))
