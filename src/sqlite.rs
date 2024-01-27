@@ -38,8 +38,19 @@ pub(crate) fn mark_url_complete(conn: &Connection, url: &String) -> Result<bool,
     Ok(true)
 }
 
+#[allow(dead_code)] // Not in use right now.
 pub(crate) fn is_previously_visited_url(conn: &Connection, url: &String) -> Result<Option<bool>, Box<dyn Error>> {
     let mut stmt = conn.prepare("SELECT 1 FROM visited WHERE url = ?1 LIMIT 1")?;
+    let mut rows = stmt.query(&[url])?;
+    let row = rows.next()?;
+    match row {
+        Some(_) => Ok(Some(true)),
+        None => Ok(Some(false))
+    }
+}
+
+pub(crate) fn is_previously_completed_url(conn: &Connection, url: &String) -> Result<Option<bool>, Box<dyn Error>> {
+    let mut stmt = conn.prepare("SELECT 1 FROM visited WHERE url = ?1 AND is_complete = 1 LIMIT 1")?;
     let mut rows = stmt.query(&[url])?;
     let row = rows.next()?;
     match row {

@@ -54,19 +54,26 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
         return false;
     }
     
+    // Format the visited URL for storage and comparison
     let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
     let visited_url = re.replace(target_url.as_str(), "$2").trim_end_matches('/').to_string();
     
-    { // Scope the mutable borrow of db_conn
+    { // Scope the mutable borrow of db_conn, otherwise it will stay in scope due to recursion below.
         let mut conn = db_conn.lock().unwrap();
-        if referer_url != "STARTING_URL" && sqlite::is_previously_visited_url(&mut conn, &visited_url).unwrap().unwrap() {
-            tools::debug_log(&format!("Ignoring previously visited URL: {}", visited_url));
+        // Check if we have already seen this URL, or if it is already marked as complete.
+        if referer_url != "STARTING_URL" && seen.lock().unwrap().contains(&visited_url) {
+            tools::debug_log(&format!("Ignoring previously seen URL: {}", visited_url));
             return true;
-        }
+        } else if referer_url != "STARTING_URL" && sqlite::is_previously_completed_url(&mut conn, &visited_url).unwrap().unwrap() {
+            seen.lock().unwrap().insert(visited_url.clone());
+            tools::debug_log(&format!("Ignoring completed URL: {}", visited_url));
+            return true;
+        } 
         
-        // Insert the visited URL into SQLite
+        // Store the visited URL
         let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), Local::now());
         URLS_VISITED.fetch_add(1, Ordering::SeqCst);
+        seen.lock().unwrap().insert(visited_url.clone());
         if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
             tools::debug_log(&format!("Failed to insert visited URL {} into SQLite: {}", visited_url, e));
         }
@@ -125,8 +132,8 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
         }
     });
 
-    // Check if we successfully set all of the child pages.
-    // If so, then we can mark this page as complete
+    // Check if we successfully crawled all of the child pages.
+    // If so, then we can mark this page as complete.
     if success.lock().unwrap().clone() {
         return true;
     } 
