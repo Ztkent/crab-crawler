@@ -9,8 +9,10 @@ This is a rust web crawler, it is designed to collect training data.
 - **BLACKLIST_DOMAINS**: An array of domain names that the crawler is banned from visiting.
 
 ### Crawler Settings
+- **FREE_CRAWL**: A boolean that, if true, allows the crawler to visit any domain. This will respect the Blacklist.
 - **MAX_URLS_TO_VISIT**: The maximum number of URLs that the crawler will visit before stopping.
 - **MAX_THREADS**: The maximum number of threads that the crawler will use.
+- **CRAWLER_TIMEOUT**: The maximum time the crawler will run.
 - **CRAWLER_REQUEST_TIMEOUT**: The maximum time the crawler will wait for a request to return.
 
 ### Logging Options
@@ -22,7 +24,6 @@ This is a rust web crawler, it is designed to collect training data.
 - **SQLITE_PATH**: The path to the SQLite database file.
 
 ### Features
-- **FREE_CRAWL**: A boolean that, if true, allows the crawler to visit any domain. This will respect the Blacklist.
 - **ROTATE_USER_AGENT**: A boolean that enables user agent rotation.
 - **RESPECT_ROBOTS**: A boolean that enables respecting robots.txt files.
 

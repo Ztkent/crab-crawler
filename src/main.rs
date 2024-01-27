@@ -1,11 +1,16 @@
 use std::sync::Arc;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use reqwest::Url;
+use std::{
+    thread,
+    sync::mpsc::{self, RecvTimeoutError},
+    time::Duration,
+};
 
 mod crawl;
+mod tools;
 mod sqlite;
 mod constants;
-mod tools;
 use constants as consts;
 
 /*
@@ -21,6 +26,7 @@ Constants:
 // Crawler Settings
 - `MAX_URLS_TO_VISIT`: The maximum number of URLs that the crawler will visit before stopping.
 - `MAX_THREADS`: The maximum number of threads that the crawler will use.
+- `CRAWLER_TIMEOUT`: The maximum time the crawler will run.
 - `CRAWLER_REQUEST_TIMEOUT`: The maximum time the crawler will wait for a request to return.
 
 // Logging Options
@@ -37,8 +43,9 @@ Constants:
 - `RESPECT_ROBOTS`: A boolean that enables respecting robots.txt files.
 
 Output:
-- The program outputs the URLs of all visited pages to a sqlite db. If an error occurs, it outputs an error message.
-- The program outputs the number of URLs visited to the console.
+- The program outputs the URLs of all visited pages to a sqlite db.
+- If `DEBUG` is true, the program outputs debug information to the console.
+- If `LIVE_LOGGING` is true, the program outputs the URLs of all visited pages to the console.
 */
 
 fn main() {
@@ -51,10 +58,32 @@ fn main() {
         }
     };
 
-    // Start crawling
+    // Start crawling, with a timeout.
     let starting_url = Url::parse(consts::STARTING_URL).expect("Failed to parse starting URL");
     let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(consts::MAX_THREADS).build().unwrap());
-    crawl::timed_crawl_website(conn, pool, starting_url);
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        crawl::timed_crawl_website(conn, pool, starting_url);
+        tx.send(()).ok();
+    });
+    
+    loop {
+        // Wait for the job to complete, or a timeout.
+        match rx.recv_timeout(Duration::from_secs(consts::CRAWLER_TIMEOUT)) {
+            Ok(()) => {
+                println!("Crawler thread finished successfully.");
+                break;
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                eprintln!("Crawler thread timed-out after {:?} seconds. Aborting...", consts::CRAWLER_TIMEOUT);
+                break;
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                eprintln!("Crawler thread disconnected. Aborting...");
+                break;
+            }
+        }
+    }
 
     // Print the number of URLs visited
     println!("Visited {} URLs.", crawl::URLS_VISITED.load(std::sync::atomic::Ordering::SeqCst));

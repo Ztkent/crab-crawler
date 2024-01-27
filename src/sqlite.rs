@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, Result, ToSql};
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::Read;
@@ -19,7 +19,7 @@ pub(crate) fn connect_sqlite_and_migrate() -> Result<Option<Connection>, Box<dyn
     // Handle any migrations to setup the database
     let migrations = get_sorted_migration_files()?;
     for migration in migrations {
-        results_db.execute(&migration, [])?;
+        results_db.execute(&migration, &[] as &[&dyn ToSql])?;
     }
     Ok(Some(results_db))
 }
@@ -56,7 +56,7 @@ pub(crate) fn connect_and_get_total_rows() -> Result<u64, Box<dyn Error>> {
         results_db = Connection::open(consts::SQLITE_PATH)?;
     }
     let mut stmt = results_db.prepare("SELECT COUNT(*) FROM visited")?;
-    let mut rows = stmt.query([])?;
+    let mut rows = stmt.query(&[] as &[&dyn ToSql])?;
 
     match rows.next()? {
         Some(row) => {
@@ -75,7 +75,7 @@ pub(crate) fn connect_and_get_completed_rows() -> Result<u64, Box<dyn Error>> {
         results_db = Connection::open(consts::SQLITE_PATH)?;
     }
     let mut stmt = results_db.prepare("SELECT COUNT(*) FROM visited WHERE is_complete = 1")?;
-    let mut rows = stmt.query([])?;
+    let mut rows = stmt.query(&[] as &[&dyn ToSql])?;
 
     match rows.next()? {
         Some(row) => {
