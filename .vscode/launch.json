@@ -8,11 +8,11 @@
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=crab-crawler",
-                    "--package=crab-crawler"
+                    "--bin=data-crawler",
+                    "--package=data-crawler"
                 ],
                 "filter": {
-                    "name": "crab-crawler",
+                    "name": "data-crawler",
                     "kind": "bin"
                 }
             },

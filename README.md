@@ -1,4 +1,4 @@
-# 🦀 crab-crawler 🦀 
+# 🦀 data-crawler 🦀 
 This is a rust web crawler, it is designed to collect training data.  
 
 ## Configuration

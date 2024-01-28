@@ -7,12 +7,12 @@ pub(crate) const FREE_CRAWL: bool = false;
 
 // Crawler Settings
 pub(crate) const MAX_URLS_TO_VISIT: usize = 50;
-pub(crate) const MAX_THREADS: usize = 8;
+pub(crate) const MAX_THREADS: usize = 4;
 pub(crate) const ROTATE_USER_AGENT: bool = true;
 pub(crate) const RESPECT_ROBOTS: bool = true;
 pub(crate) const CRAWLER_TIMEOUT: u64 = 300; 
 pub(crate) const CRAWLER_REQUEST_TIMEOUT: u64 = 5; 
-pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 3000; 
+pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 500; 
 
 // Logging Options
 pub(crate) const DEBUG: bool = false;
