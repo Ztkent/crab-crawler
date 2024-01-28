@@ -214,6 +214,9 @@ fn extract_links(doc: &Html) -> Result<SiteUrls, Box<dyn std::error::Error>> {
     // let audio_urls = extract_attributes(doc, "audio[src]", "src");
     // let source_urls = extract_attributes(doc, "source[src]", "src");
 
+    // TODO: Save some recursion, remove duplicates and links we've seen.
+    // TODO: Handle relative URLs.
+
     Ok(SiteUrls {
         link_urls,
         // img_urls,
