@@ -15,7 +15,7 @@ pub(crate) const CRAWLER_REQUEST_TIMEOUT: u64 = 5;
 pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 500; 
 
 // Logging Options
-pub(crate) const DEBUG: bool = false;
+pub(crate) const DEBUG: bool = true;
 pub(crate) const LIVE_LOGGING: bool = true;
 
 // Database Settings

@@ -223,7 +223,9 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
             if let Some(link_url) = link_url {
                 // Check if this URL should be ignored due to robots.txt
                 if consts::RESPECT_ROBOTS && tools::is_robots_txt_blocked(link_url.clone()) {
-                    tools::debug_log(&format!("Ignoring robots.txt blocked URL: {}", link_url));
+                    if consts::DEBUG {
+                        tools::debug_log(&format!("Ignoring robots.txt blocked URL: {}", link_url));
+                    }
                     return None;
                 }
 

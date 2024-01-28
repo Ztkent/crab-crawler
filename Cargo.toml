@@ -18,3 +18,5 @@ chrono = "*"
 rusqlite = {version = "*", features = ["bundled"]}
 rand = "*"
 robotstxt = "*"
+lazy_static = "*"
+
