@@ -141,12 +141,6 @@ fn fetch_html(url: Url) -> Result<String, Error> {
     .timeout(std::time::Duration::from_secs(consts::CRAWLER_REQUEST_TIMEOUT))
     .build()
     .unwrap();
-    
-    // Handle the robots.txt file, skipping any URLs that are disallowed
-    if consts::RESPECT_ROBOTS {
-        // We will want to do this with a cached version of the robots.txt file. 
-        // let robots_url: String = format!("https://{}/robots.txt", url);
-    }
 
     // Randomly pick a user agent from the list
     let mut user_agent = consts::USER_AGENT_CHROME;
@@ -227,6 +221,12 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
         let (link_url, is_valid) = is_valid_site(&link);
         if is_valid {
             if let Some(link_url) = link_url {
+                // Check if this URL should be ignored due to robots.txt
+                if consts::RESPECT_ROBOTS && tools::is_robots_txt_blocked(link_url.clone()) {
+                    tools::debug_log(&format!("Ignoring robots.txt blocked URL: {}", link_url));
+                    return None;
+                }
+
                 // Recrawl the starting URL, even if it is marked as complete.
                 if referrer_url == "STARTING_URL" {
                     return Some(link_url);
