@@ -36,19 +36,19 @@ pub(crate) static URLS_VISITED: AtomicUsize = AtomicUsize::new(0);
 
 // Struct to hold all the different types of URLs
 struct SiteUrls {
+    link_urls: Vec<Url>,
+    // img_urls: Vec<Url>,
+    // video_urls: Vec<Url>,
+    // audio_urls: Vec<Url>,
+    // source_urls: Vec<Url>,
+}
+
+struct SiteLinks {
     link_urls: Vec<String>,
-    // img_urls: Vec<String>,
-    // stylesheet_urls: Vec<String>,
-    // script_urls: Vec<String>,
-    // object_data_urls: Vec<String>,
-    // embed_urls: Vec<String>,
-    // video_urls: Vec<String>,
-    // audio_urls: Vec<String>,
-    // source_urls: Vec<String>,
 }
 
 // Recursively crawl a website, with Depth-First Search.
-fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, seen: Arc<Mutex<HashSet<String>>>, target_url: &Url, referer_url: &String) -> bool {
+fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, seen: Arc<Mutex<HashSet<String>>>, target_url: &Url, referrer_url: &String) -> bool {
     if URLS_VISITED.load(Ordering::SeqCst) >= consts::MAX_URLS_TO_VISIT {
         // Base Case
         return false;
@@ -57,27 +57,21 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     // Format the visited URL for storage and comparison
     let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
     let visited_url = re.replace(target_url.as_str(), "$2").trim_end_matches('/').to_string();
-    
     { // Scope the mutable borrow of db_conn, otherwise it will stay in scope due to recursion below.
         let mut conn = db_conn.lock().unwrap();
-        // Check if we have already seen this URL, or if it is already marked as complete.
-        if referer_url != "STARTING_URL" && seen.lock().unwrap().contains(&visited_url) {
-            tools::debug_log(&format!("Ignoring previously seen URL: {}", visited_url));
-            return true;
-        } else if referer_url != "STARTING_URL" && sqlite::is_previously_completed_url(&mut conn, &visited_url).unwrap().unwrap() {
-            seen.lock().unwrap().insert(visited_url.clone());
-            tools::debug_log(&format!("Ignoring completed URL: {}", visited_url));
-            return true;
-        } 
-        
         // Store the visited URL
-        let visited_site = VisitedSite::new(visited_url.clone(), referer_url.clone(), Local::now());
+        let visited_site = VisitedSite::new(visited_url.clone(), referrer_url.clone(), Local::now());
         URLS_VISITED.fetch_add(1, Ordering::SeqCst);
         seen.lock().unwrap().insert(visited_url.clone());
         if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
             tools::debug_log(&format!("Failed to insert visited URL {} into SQLite: {}", visited_url, e));
         }
     }
+
+    // Set the delay before continuing after the request is complete.
+    let _defer = tools::Defer::new(|| {
+        std::thread::sleep(std::time::Duration::from_millis(consts::CRAWLER_REQUEST_DELAY_MS));
+    });
 
     // Fetch the HTML content of the page
     let html = match fetch_html(target_url.clone()) {
@@ -98,7 +92,7 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     };
 
     // Extract the links from the Html object
-    let links = match extract_links(&doc) {
+    let site_links = match extract_links(&doc){
         Ok(links) => links,
         Err(e) => {
             tools::debug_log(&format!("Failed to extract links from {}: {}", target_url, e));
@@ -106,21 +100,19 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
         }
     };
 
+    // Filter links to only include those that are valid, and not already seen or completed.
+    let site_urls = filter_links_to_urls(site_links, &seen, &db_conn, visited_url.clone(), referrer_url.clone());
+
     // Recursively crawl each link
     // This is thread-safe, and will never run more than MAX_THREADS concurrent requests.
     let success = Arc::new(Mutex::new(true));
     pool.install(|| {
         // Handle the links
-        let complete = links.link_urls.into_par_iter().try_for_each(|link| {
-            let (link_url, is_valid) = is_valid_site(&link);
-            if is_valid {
-                if let Some(link_url) = link_url {
-                    if !crawl_website_dfs(db_conn.clone(), pool.clone(), seen.clone(), &link_url, &visited_url) {
+        let complete = site_urls.link_urls.into_par_iter().try_for_each(|targer_url| {
+                    if !crawl_website_dfs(db_conn.clone(), pool.clone(), seen.clone(), &targer_url, &visited_url) {
                         *success.lock().unwrap() = false;
                         return Err(());
                     }
-                }
-            }
             Ok(())
         });
 
@@ -203,7 +195,7 @@ fn extract_attributes(doc: &Html, selector_str: &str, attr: &str) -> Vec<String>
 }
 
 // Extract all links and image URLs from parsed HTML
-fn extract_links(doc: &Html) -> Result<SiteUrls, Box<dyn std::error::Error>> {
+fn extract_links(doc: &Html) -> Result<SiteLinks, Box<dyn std::error::Error>> {
     let link_urls = extract_attributes(doc, "a[href]", "href");
     // let img_urls = extract_attributes(doc, "img[src]", "src");
     // let stylesheet_urls = extract_attributes(doc, "link[rel=stylesheet][href]", "href");
@@ -214,10 +206,8 @@ fn extract_links(doc: &Html) -> Result<SiteUrls, Box<dyn std::error::Error>> {
     // let audio_urls = extract_attributes(doc, "audio[src]", "src");
     // let source_urls = extract_attributes(doc, "source[src]", "src");
 
-    // TODO: Save some recursion, remove duplicates and links we've seen.
     // TODO: Handle relative URLs.
-
-    Ok(SiteUrls {
+    Ok(SiteLinks {
         link_urls,
         // img_urls,
         // stylesheet_urls,
@@ -228,6 +218,39 @@ fn extract_links(doc: &Html) -> Result<SiteUrls, Box<dyn std::error::Error>> {
         // audio_urls,
         // source_urls,
     })
+}
+
+// Save some recursion, remove duplicates and links we've seen.
+fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, visited_url: String, referrer_url: String) -> SiteUrls {
+    let mut link_urls_set = HashSet::new();
+    link_urls_set.extend(links.link_urls.into_iter().filter_map(|link: String| {
+        let (link_url, is_valid) = is_valid_site(&link);
+        if is_valid {
+            if let Some(link_url) = link_url {
+                // Recrawl the starting URL, even if it is marked as complete.
+                if referrer_url == "STARTING_URL" {
+                    return Some(link_url);
+                }
+                
+                // Check if we have already seen this URL, or if it is already marked as complete.
+                if seen.lock().unwrap().contains(&visited_url) {
+                    tools::debug_log(&format!("Ignoring previously seen URL: {}", visited_url));
+                    return None;
+                } else if sqlite::is_previously_completed_url(&mut db_conn.lock().unwrap(), &visited_url).unwrap().unwrap() {
+                    seen.lock().unwrap().insert(visited_url.clone());
+                    tools::debug_log(&format!("Ignoring completed URL: {}", visited_url));
+                    return None;
+                } 
+                return Some(link_url);
+            }
+        }
+        None
+    }));
+    // Convert the HashSet to a Vec, preventing duplicates.
+    let link_urls_vec: Vec<_> = link_urls_set.into_iter().collect();
+    SiteUrls {
+        link_urls: link_urls_vec,
+    }
 }
 
 fn is_valid_site(url: &str) -> (Option<Url>, bool) {

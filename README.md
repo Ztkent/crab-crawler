@@ -14,6 +14,7 @@ This is a rust web crawler, it is designed to collect training data.
 - **MAX_THREADS**: The maximum number of threads that the crawler will use.
 - **CRAWLER_TIMEOUT**: The maximum time the crawler will run.
 - **CRAWLER_REQUEST_TIMEOUT**: The maximum time the crawler will wait for a request to return.
+- **CRAWLER_REQUEST_DELAY_MS**: The time each crawler thread will wait between visiting sites.
 
 ### Logging Options
 - **DEBUG**: A boolean that enables debug output.

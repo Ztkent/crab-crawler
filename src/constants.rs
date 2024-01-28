@@ -3,21 +3,23 @@ pub(crate) const STARTING_URL: &str = "https://www.cnn.com";
 pub(crate) const PERMITTED_DOMAINS: [&str; 1] = ["www.cnn.com"];
 pub(crate) const BLACKLIST_DOMAINS: [&str; 0] = [];
 pub(crate) const FREE_CRAWL: bool = false;
+// "cnn.com/politics/congress"
 
 // Crawler Settings
 pub(crate) const MAX_URLS_TO_VISIT: usize = 50;
-pub(crate) const MAX_THREADS: usize = 5;
+pub(crate) const MAX_THREADS: usize = 8;
 pub(crate) const ROTATE_USER_AGENT: bool = true;
 pub(crate) const RESPECT_ROBOTS: bool = true;
 pub(crate) const CRAWLER_TIMEOUT: u64 = 300; 
 pub(crate) const CRAWLER_REQUEST_TIMEOUT: u64 = 5; 
+pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 3000; 
 
 // Logging Options
-pub(crate) const DEBUG: bool = true;
+pub(crate) const DEBUG: bool = false;
 pub(crate) const LIVE_LOGGING: bool = true;
 
 // Database Settings
-pub(crate) const SQLITE_ENABLED: bool = true;
+pub(crate) const SQLITE_ENABLED: bool = false;
 pub(crate) const SQLITE_PATH: &str = "db/crawl_results.db";
 
 // User Agents

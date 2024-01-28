@@ -27,8 +27,8 @@ pub(crate) fn connect_sqlite_and_migrate() -> Result<Option<Connection>, Box<dyn
 pub(crate) fn insert_visited_site(conn: &Connection, visited_site: crawl::VisitedSite) -> Result<bool, Box<dyn Error>> {
     let visited_at = visited_site.visited_at().format("%Y-%m-%d %H:%M:%S").to_string();
     conn.execute("
-        INSERT OR IGNORE INTO visited (url, referrer, last_visited_at) VALUES (?1, ?2, ?3);
-        UPDATE visited SET referrer = ?2, last_visited_at = ?3 WHERE url = ?1;
+        INSERT INTO visited (url, referrer, last_visited_at) VALUES (?1, ?2, ?3)
+        ON CONFLICT(url) DO UPDATE SET referrer = ?2, last_visited_at = strftime('%Y-%m-%d %H:%M:%S', 'now');
         ", &[visited_site.url(), visited_site.referrer(), &visited_at])?;
     Ok(true)
 }
