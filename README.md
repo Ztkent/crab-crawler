@@ -25,7 +25,7 @@ This is a rust web crawler, it is designed to collect training data.
 - **SQLITE_PATH**: The path to the SQLite database file.
 
 ### Features
-- **ROTATE_USER_AGENT**: A boolean that enables user agent rotation.
+- **ROTATE_USER_AGENTS**: A boolean that enables user agent rotation.
 - **RESPECT_ROBOTS**: A boolean that enables respecting robots.txt files.
 
 ## Output
@@ -42,5 +42,7 @@ To enable this:
 - uses a thread pool to visit multiple URLs concurrently.
 - creates a thread-safe hash set of URLs seen on this run.
 - swaps the user agent between requests.
+- respects robots.txt files.
+- supports throttling and timeouts.
 - stores selected data in a sqlite database for review.
 

@@ -3,7 +3,6 @@ use rusqlite::Connection;
 use scraper::{Html, Selector};
 use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
 use rayon::{ThreadPool, prelude::*};
-use regex::Regex;
 use chrono::{Local, DateTime};
 use rand::seq::SliceRandom;
 use std::collections::HashSet;
@@ -55,8 +54,7 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     }
     
     // Format the visited URL for storage and comparison
-    let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
-    let visited_url = re.replace(target_url.as_str(), "$2").trim_end_matches('/').to_string();
+    let visited_url = tools::format_url_for_storage(target_url.to_string());
     { // Scope the mutable borrow of db_conn, otherwise it will stay in scope due to recursion below.
         let mut conn = db_conn.lock().unwrap();
         // Store the visited URL
@@ -144,7 +142,7 @@ fn fetch_html(url: Url) -> Result<String, Error> {
 
     // Randomly pick a user agent from the list
     let mut user_agent = consts::USER_AGENT_CHROME;
-    if consts::ROTATE_USER_AGENT {
+    if consts::ROTATE_USER_AGENTS {
         user_agent = consts::USER_AGENTS.choose(&mut rand::thread_rng()).unwrap();
     }
     
@@ -235,12 +233,13 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
                 }
                 
                 // Check if we have already seen this URL, or if it is already marked as complete.
-                if seen.lock().unwrap().contains(&visited_url) {
-                    tools::debug_log(&format!("Ignoring previously seen URL: {}", visited_url));
+                let formatted_link_url = tools::format_url_for_storage(link_url.to_string());
+                if seen.lock().unwrap().contains(&formatted_link_url) {
+                    tools::debug_log(&format!("Ignoring previously seen URL: {}", formatted_link_url));
                     return None;
-                } else if sqlite::is_previously_completed_url(&mut db_conn.lock().unwrap(), &visited_url).unwrap().unwrap() {
+                } else if sqlite::is_previously_completed_url(&mut db_conn.lock().unwrap(), &formatted_link_url).unwrap().unwrap() {
                     seen.lock().unwrap().insert(visited_url.clone());
-                    tools::debug_log(&format!("Ignoring completed URL: {}", visited_url));
+                    tools::debug_log(&format!("Ignoring completed URL: {}", formatted_link_url));
                     return None;
                 } 
                 return Some(link_url);

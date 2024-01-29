@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
+use regex::Regex;
 use reqwest::Url;
 use robotstxt::DefaultMatcher;
 use crate::constants as consts;
@@ -23,6 +24,12 @@ pub(crate) fn is_robots_txt_blocked(url: Url) -> bool {
 
     let mut matcher = DefaultMatcher::default();
     !matcher.allowed_by_robots(&robots_txt, consts::USER_AGENTS.into_iter().collect(), url.as_str())
+}
+
+pub(crate) fn format_url_for_storage(url: String) -> String{
+    let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
+    let formatted_url = re.replace(&url, "$2").trim_end_matches('/').to_string();
+    formatted_url
 }
 
 // Defer is a helper struct that allows us to run a function when the struct is dropped.

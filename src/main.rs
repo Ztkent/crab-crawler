@@ -40,7 +40,7 @@ Constants:
 
 // Features
 - `FREE_CRAWL`: A boolean that, if true, allows the crawler to visit any domain. This will respect the Blacklist.
-- `ROTATE_USER_AGENT`: A boolean that enables user agent rotation.
+- `ROTATE_USER_AGENTS`: A boolean that enables user agent rotation.
 - `RESPECT_ROBOTS`: A boolean that enables respecting robots.txt files.
 
 Output:
@@ -87,7 +87,7 @@ fn main() {
     }
 
     // Print the number of URLs visited
-    println!("Visited {} URLs.", crawl::URLS_VISITED.load(std::sync::atomic::Ordering::SeqCst));
+    println!("Visited {} URLs.", crawl::URLS_VISITED.load(std::sync::atomic::Ordering::SeqCst) - 1);
     if consts::SQLITE_ENABLED {
         println!("DB Contains {:?} URLs, {:?} complete.", sqlite::connect_and_get_total_rows().unwrap(), sqlite::connect_and_get_completed_rows().unwrap());
     }
