@@ -54,15 +54,15 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     }
     
     // Format the visited URL for storage and comparison
-    let visited_url = tools::format_url_for_storage(target_url.to_string());
+    let formatted_target_url = tools::format_url_for_storage(target_url.to_string());
     { // Scope the mutable borrow of db_conn, otherwise it will stay in scope due to recursion below.
         let mut conn = db_conn.lock().unwrap();
         // Store the visited URL
-        let visited_site = VisitedSite::new(visited_url.clone(), referrer_url.clone(), Local::now());
+        let visited_site = VisitedSite::new(formatted_target_url.clone(), referrer_url.clone(), Local::now());
         URLS_VISITED.fetch_add(1, Ordering::SeqCst);
-        seen.lock().unwrap().insert(visited_url.clone());
+        seen.lock().unwrap().insert(formatted_target_url.clone());
         if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
-            tools::debug_log(&format!("Failed to insert visited URL {} into SQLite: {}", visited_url, e));
+            tools::debug_log(&format!("Failed to insert visited URL {} into SQLite: {}", formatted_target_url, e));
         }
     }
 
@@ -72,6 +72,9 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     });
 
     // Fetch the HTML content of the page
+    if consts::LIVE_LOGGING {
+        println!("Visiting {} from {}", target_url, referrer_url);
+    }
     let html = match fetch_html(target_url.clone()) {
         Ok(html) => html,
         Err(e) => {
@@ -99,15 +102,15 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     };
 
     // Filter links to only include those that are valid, and not already seen or completed.
-    let site_urls = filter_links_to_urls(site_links, &seen, &db_conn, visited_url.clone(), referrer_url.clone());
+    let site_urls = filter_links_to_urls(site_links, &seen, &db_conn, referrer_url.clone());
 
     // Recursively crawl each link
     // This is thread-safe, and will never run more than MAX_THREADS concurrent requests.
     let success = Arc::new(Mutex::new(true));
     pool.install(|| {
         // Handle the links
-        let complete = site_urls.link_urls.into_par_iter().try_for_each(|targer_url| {
-                    if !crawl_website_dfs(db_conn.clone(), pool.clone(), seen.clone(), &targer_url, &visited_url) {
+        let complete = site_urls.link_urls.into_par_iter().try_for_each(|url| {
+                    if !crawl_website_dfs(db_conn.clone(), pool.clone(), seen.clone(), &url, &formatted_target_url) {
                         *success.lock().unwrap() = false;
                         return Err(());
                     }
@@ -116,8 +119,8 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
 
         // Mark the page as finished in sqlite
         if complete.is_ok() {
-            if let Err(e) = sqlite::mark_url_complete(&mut db_conn.lock().unwrap(), &visited_url) {
-                tools::debug_log(&format!("Failed to mark URL {} as complete in SQLite: {}", visited_url, e));
+            if let Err(e) = sqlite::mark_url_complete(&mut db_conn.lock().unwrap(), &formatted_target_url) {
+                tools::debug_log(&format!("Failed to mark URL {} as complete in SQLite: {}", formatted_target_url, e));
             }
         }
     });
@@ -144,11 +147,6 @@ fn fetch_html(url: Url) -> Result<String, Error> {
     let mut user_agent = consts::USER_AGENT_CHROME;
     if consts::ROTATE_USER_AGENTS {
         user_agent = consts::USER_AGENTS.choose(&mut rand::thread_rng()).unwrap();
-    }
-    
-    // Print the URL that we are visiting
-    if consts::LIVE_LOGGING {
-        println!("Visiting {}", url);
     }
 
     // Send a GET request to the specified URL and get a response
@@ -213,7 +211,7 @@ fn extract_links(doc: &Html) -> Result<SiteLinks, Box<dyn std::error::Error>> {
 }
 
 // Save some recursion, remove duplicates and links we've seen.
-fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, visited_url: String, referrer_url: String) -> SiteUrls {
+fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: String) -> SiteUrls {
     let mut link_urls_set = HashSet::new();
     link_urls_set.extend(links.link_urls.into_iter().filter_map(|link: String| {
         let (link_url, is_valid) = is_valid_site(&link);
@@ -238,7 +236,7 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
                     tools::debug_log(&format!("Ignoring previously seen URL: {}", formatted_link_url));
                     return None;
                 } else if sqlite::is_previously_completed_url(&mut db_conn.lock().unwrap(), &formatted_link_url).unwrap().unwrap() {
-                    seen.lock().unwrap().insert(visited_url.clone());
+                    seen.lock().unwrap().insert(formatted_link_url.clone());
                     tools::debug_log(&format!("Ignoring completed URL: {}", formatted_link_url));
                     return None;
                 } 

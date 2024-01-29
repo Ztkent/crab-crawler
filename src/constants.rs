@@ -6,13 +6,13 @@ pub(crate) const FREE_CRAWL: bool = false;
 // "cnn.com/politics/congress"
 
 // Crawler Settings
-pub(crate) const MAX_URLS_TO_VISIT: usize = 25;
-pub(crate) const MAX_THREADS: usize = 2;
+pub(crate) const MAX_URLS_TO_VISIT: usize = 250;
+pub(crate) const MAX_THREADS: usize = 8;
 pub(crate) const ROTATE_USER_AGENTS: bool = true;
 pub(crate) const RESPECT_ROBOTS: bool = true;
-pub(crate) const CRAWLER_TIMEOUT: u64 = 600; 
+pub(crate) const CRAWLER_TIMEOUT: u64 = 1200; 
 pub(crate) const CRAWLER_REQUEST_TIMEOUT: u64 = 5; 
-pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 500; 
+pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 0; 
 
 // Logging Options
 pub(crate) const DEBUG: bool = false;
