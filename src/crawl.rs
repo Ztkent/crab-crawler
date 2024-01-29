@@ -60,7 +60,6 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
         // Store the visited URL
         let visited_site = VisitedSite::new(formatted_target_url.clone(), referrer_url.clone(), Local::now());
         URLS_VISITED.fetch_add(1, Ordering::SeqCst);
-        seen.lock().unwrap().insert(formatted_target_url.clone());
         if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
             tools::debug_log(&format!("Failed to insert visited URL {} into SQLite: {}", formatted_target_url, e));
         }
@@ -272,7 +271,7 @@ fn is_valid_site(url: &str) -> (Option<Url>, bool) {
 pub(crate) fn timed_crawl_website(db_conn: Connection, pool: Arc<ThreadPool>, url: Url) {
     let start = Local::now();
     let db_conn = Arc::new(Mutex::new(db_conn));
-    let seen: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    let seen = Arc::new(Mutex::new(HashSet::from_iter([tools::format_url_for_storage(url.to_string())])));
     crawl_website_dfs(db_conn, pool, seen, &url, &"STARTING_URL".to_string());
     let duration: chrono::Duration = Local::now().signed_duration_since(start);
     println!("Time elapsed in crawl_website() is: {:?}", duration);
