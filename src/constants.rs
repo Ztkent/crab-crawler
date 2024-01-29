@@ -6,7 +6,7 @@ pub(crate) const FREE_CRAWL: bool = false;
 // "cnn.com/politics/congress"
 
 // Crawler Settings
-pub(crate) const MAX_URLS_TO_VISIT: usize = 250;
+pub(crate) const MAX_URLS_TO_VISIT: usize = 100;
 pub(crate) const MAX_THREADS: usize = 8;
 pub(crate) const ROTATE_USER_AGENTS: bool = true;
 pub(crate) const RESPECT_ROBOTS: bool = true;

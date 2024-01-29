@@ -102,7 +102,7 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     };
 
     // Filter links to only include those that are valid, and not already seen or completed.
-    let site_urls = filter_links_to_urls(site_links, &seen, &db_conn, referrer_url.clone());
+    let site_urls = filter_links_to_urls(site_links, &seen, &db_conn);
 
     // Recursively crawl each link
     // This is thread-safe, and will never run more than MAX_THREADS concurrent requests.
@@ -211,7 +211,7 @@ fn extract_links(doc: &Html) -> Result<SiteLinks, Box<dyn std::error::Error>> {
 }
 
 // Save some recursion, remove duplicates and links we've seen.
-fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: String) -> SiteUrls {
+fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>) -> SiteUrls {
     let mut link_urls_set = HashSet::new();
     link_urls_set.extend(links.link_urls.into_iter().filter_map(|link: String| {
         let (link_url, is_valid) = is_valid_site(&link);
@@ -224,11 +224,6 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
                     }
                     return None;
                 }
-
-                // Recrawl the starting URL, even if it is marked as complete.
-                if referrer_url == "STARTING_URL" {
-                    return Some(link_url);
-                }
                 
                 // Check if we have already seen this URL, or if it is already marked as complete.
                 let formatted_link_url = tools::format_url_for_storage(link_url.to_string());
@@ -239,7 +234,8 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
                     seen.lock().unwrap().insert(formatted_link_url.clone());
                     tools::debug_log(&format!("Ignoring completed URL: {}", formatted_link_url));
                     return None;
-                } 
+                }
+                seen.lock().unwrap().insert(formatted_link_url.clone());
                 return Some(link_url);
             }
         }
