@@ -101,7 +101,7 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     };
 
     // Filter links to only include those that are valid, and not already seen or completed.
-    let site_urls = filter_links_to_urls(site_links, &seen, &db_conn);
+    let site_urls = filter_links_to_urls(site_links, &seen, &db_conn, &target_url.to_string());
 
     // Recursively crawl each link
     // This is thread-safe, and will never run more than MAX_THREADS concurrent requests.
@@ -195,7 +195,6 @@ fn extract_links(doc: &Html) -> Result<SiteLinks, Box<dyn std::error::Error>> {
     // let audio_urls = extract_attributes(doc, "audio[src]", "src");
     // let source_urls = extract_attributes(doc, "source[src]", "src");
 
-    // TODO: Handle relative URLs.
     Ok(SiteLinks {
         link_urls,
         // img_urls,
@@ -210,10 +209,10 @@ fn extract_links(doc: &Html) -> Result<SiteLinks, Box<dyn std::error::Error>> {
 }
 
 // Save some recursion, remove duplicates and links we've seen.
-fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>) -> SiteUrls {
+fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> SiteUrls {
     let mut link_urls_set = HashSet::new();
     link_urls_set.extend(links.link_urls.into_iter().filter_map(|link: String| {
-        let (link_url, is_valid) = is_valid_site(&link);
+        let (link_url, is_valid) = is_valid_site(&link, referrer_url);
         if is_valid {
             if let Some(link_url) = link_url {
                 // Check if this URL should be ignored due to robots.txt
@@ -247,21 +246,50 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
     }
 }
 
-fn is_valid_site(url: &str) -> (Option<Url>, bool) {
-    if let Ok(parsed_url) = Url::parse(url) {
+
+// Determine if a site or relative path is valid.
+fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
+    let mut formatted_url = url.to_string();
+    if url == "" || url == "/" {
+        return (None, false);
+    } else if url.starts_with("/") {
+        // Relative path to a url. such as "/politics/congress".
+        let ref_url = Url::parse(referrer_url);
+        if ref_url.is_err() {
+            tools::debug_log(&format!("Invalid referrer URL: {}", referrer_url));
+            return (None, false);
+        }
+        let ref_url = ref_url.unwrap();
+        let ref_domain = ref_url.domain().unwrap_or("").to_string();
+        if consts::LOG_RELATIVE {
+            eprintln!("{}", format!("Relative: {} + {}", ref_domain, formatted_url));
+        }
+        formatted_url = format!("{}{}", referrer_url, formatted_url);
+    } else if url.starts_with("#") {
+        return (None, false);
+    } else if url.starts_with("mailto") {
+        return (None, false);
+    } else if url.starts_with("javascript") {
+        return (None, false);
+    }  else if !url.starts_with("http") {
+        tools::debug_log(&format!("Invalid URL: {}", url));
+        return (None, false);
+    }
+
+    if let Ok(parsed_url) = Url::parse(&formatted_url) {
         // Check if the domain of the URL is in the list of permitted domains.
         if let Some(domain) = parsed_url.domain() {
             if (consts::FREE_CRAWL || consts::PERMITTED_DOMAINS.iter().any(|&d| domain.eq(d)))
                   && !consts::BLACKLIST_DOMAINS.iter().any(|&d| domain.eq(d)) {
                 return (Some(parsed_url), true);
             } else {
-                // If the domain isn't in the list of permitted domains, print an error message, and all of the other parsed_url fields
+                // If the domain isn't in the list of permitted domains..
                 tools::debug_log(&format!("Domain {} isn't in the list of permitted domains: {:?}", domain, parsed_url));
                 return (Some(parsed_url), false);
             }
         } else {
-            // If the URL doesn't have a domain, print an error message, and all of the other parsed_url fields
-            tools::debug_log(&format!("URL {} doesn't have a domain", url));
+            // If the URL doesn't have a domain..
+            tools::debug_log(&format!("URL {} doesn't have a domain", formatted_url));
             return (Some(parsed_url), false);
         }
     }
@@ -319,7 +347,8 @@ mod tests {
     #[test]
     fn test_is_valid_site() {
         let url = "https://www.cnn.com";
-        let (_, is_valid) = is_valid_site(url);
+        let referer  = "https://www.cnn.com";
+        let (_, is_valid) = is_valid_site(url, &referer.to_string());
         assert!(is_valid);
     }
 }

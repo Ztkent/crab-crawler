@@ -6,13 +6,13 @@ pub(crate) const FREE_CRAWL: bool = false;
 // "cnn.com/politics/congress"
 
 // Crawler Settings
-pub(crate) const MAX_URLS_TO_VISIT: usize = 100;
-pub(crate) const MAX_THREADS: usize = 8;
+pub(crate) const MAX_URLS_TO_VISIT: usize = 1000;
+pub(crate) const MAX_THREADS: usize = 4;
 pub(crate) const ROTATE_USER_AGENTS: bool = true;
 pub(crate) const RESPECT_ROBOTS: bool = true;
 pub(crate) const CRAWLER_TIMEOUT: u64 = 1200; 
 pub(crate) const CRAWLER_REQUEST_TIMEOUT: u64 = 5; 
-pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 0; 
+pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 5000; 
 
 // Logging Options
 pub(crate) const DEBUG: bool = false;
@@ -31,3 +31,7 @@ const USER_AGENT_EDGE: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWe
 const USER_AGENT_OPERA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36 OPR/64.0.3417.54";
 const USER_AGENT_BRAVE: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36 Brave/78.1.3.15";
 pub(crate) const USER_AGENTS: [&str; 7] = [USER_AGENT_CHROME, USER_AGENT_FIREFOX, USER_AGENT_SAFARI, USER_AGENT_IE, USER_AGENT_EDGE, USER_AGENT_OPERA, USER_AGENT_BRAVE];
+
+
+// Testing
+pub(crate) const LOG_RELATIVE: bool = true;
