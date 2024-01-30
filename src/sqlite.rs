@@ -41,7 +41,7 @@ pub(crate) fn mark_url_complete(conn: &Connection, url: &String) -> Result<bool,
 pub(crate) fn mark_url_blocked(conn: &Connection, url: &String, referrer: &String) -> Result<bool, Box<dyn Error>> {
     conn.execute("
         INSERT INTO visited (url, referrer, last_visited_at, is_blocked) VALUES (?1, ?2, strftime('%Y-%m-%d %H:%M:%S', 'now'), 1)
-        ON CONFLICT(url) DO UPDATE SET referrer = ?2, last_visited_at = strftime('%Y-%m-%d %H:%M:%S', 'now', is_blocked = 1);
+        ON CONFLICT(url) DO UPDATE SET referrer = ?2, last_visited_at = strftime('%Y-%m-%d %H:%M:%S', 'now'), is_blocked = 1;
         ", &[url, referrer])?;
     Ok(true)
 }

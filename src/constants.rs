@@ -34,4 +34,4 @@ pub(crate) const USER_AGENTS: [&str; 7] = [USER_AGENT_CHROME, USER_AGENT_FIREFOX
 
 
 // Testing
-pub(crate) const LOG_RELATIVE: bool = true;
+pub(crate) const LOG_RELATIVE_PATHS: bool = true;

@@ -34,6 +34,7 @@ pub(crate) fn is_robots_txt_blocked(db_conn: &Arc<Mutex<Connection>>, url: Url, 
     });
 
     let mut matcher = DefaultMatcher::default();
+    //TODO: i think this can panic if the robots.txt is invalid
     let blocked = !matcher.allowed_by_robots(&robots_txt, consts::USER_AGENTS.into_iter().collect(), url.as_str());
     if blocked {
         if let Err(e) = sqlite::mark_url_blocked(&mut db_conn.lock().unwrap(), &url.to_string(), referrer_url) {
