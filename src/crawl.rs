@@ -211,8 +211,17 @@ fn extract_links(doc: &Html) -> Result<SiteLinks, Box<dyn std::error::Error>> {
 // Save some recursion, remove duplicates and links we've seen.
 fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> SiteUrls {
     let mut link_urls_set = HashSet::new();
-    link_urls_set.extend(links.link_urls.into_iter().filter_map(|link: String| {
-        let (link_url, is_valid) = is_valid_site(&link, referrer_url);
+    link_urls_set.extend(links.link_urls.into_iter().filter_map(|mut link: String| {
+        // Handle any links that are relative paths
+        link = match handle_relative_paths(&link, referrer_url) {
+            Ok(value) => value,
+            Err(_) => {
+                return None;
+            },
+        };
+        
+        // Check if the link is valid
+        let (link_url, is_valid) = is_valid_site(&link);
         if is_valid {
             if let Some(link_url) = link_url {
                 let formatted_link_url = tools::format_url_for_storage(link_url.to_string());
@@ -225,7 +234,7 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
                     seen.lock().unwrap().insert(formatted_link_url.clone());
                     tools::debug_log(&format!("Ignoring completed URL: {}", formatted_link_url));
                     return None;
-                } else if consts::RESPECT_ROBOTS && tools::is_robots_txt_blocked(link_url.clone()) {
+                } else if consts::RESPECT_ROBOTS && tools::is_robots_txt_blocked(db_conn, link_url.clone(), &referrer_url) {
                     // Check if this URL should be ignored due to robots.txt
                     seen.lock().unwrap().insert(formatted_link_url.clone());
                     tools::debug_log(&format!("Ignoring robots.txt blocked URL: {}", link_url));
@@ -246,19 +255,41 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
 
 
 // Determine if a site or relative path is valid.
-fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
+fn is_valid_site(url: &str) -> (Option<Url>, bool) {
+    if let Ok(parsed_url) = Url::parse(&url) {
+        // Check if the domain of the URL is in the list of permitted domains.
+        if let Some(domain) = parsed_url.domain() {
+            if (consts::FREE_CRAWL || consts::PERMITTED_DOMAINS.iter().any(|&d| domain.eq(d)))
+                  && !consts::BLACKLIST_DOMAINS.iter().any(|&d| domain.eq(d)) {
+                return (Some(parsed_url), true);
+            } else {
+                // If the domain isn't in the list of permitted domains..
+                tools::debug_log(&format!("Domain {} isn't in the list of permitted domains: {:?}", domain, parsed_url));
+                return (Some(parsed_url), false);
+            }
+        } else {
+            // If the URL doesn't have a domain..
+            tools::debug_log(&format!("URL {} doesn't have a domain", url));
+            return (Some(parsed_url), false);
+        }
+    }
+    (None, false)
+}
+
+// Handle any relative paths that we've encountered.
+fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Option<Url>, bool)> {
     let mut formatted_url = url.to_string();
     if url == "" || url == "/" || url == "#" || url == "?" {
-        return (None, false);
+        return Err((None, false));
     } else if url.starts_with("mailto") || url.starts_with("whatsapp") || 
         url.starts_with("tel") || url.starts_with("sms") || url.starts_with("facetime") || 
         url.starts_with("skype") || url.starts_with("slack") || url.starts_with("zoom") {
-        return (None, false);
+        return Err((None, false));
     } else if url.starts_with("javascript") {
-        return (None, false);
+        return Err((None, false));
     } else if url.starts_with("#") {
         // Same page, another anchor i.e. "#top"
-        return (None, false);
+        return Err((None, false));
     } else if url.starts_with("//") {
         // Protocol-relative URL. such as "//www.cnn.com".
         formatted_url = format!("https:{}", url);
@@ -267,7 +298,7 @@ fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
         let ref_url = Url::parse(referrer_url);
         if ref_url.is_err() {
             tools::debug_log(&format!("Invalid referrer URL: {}", referrer_url));
-            return (None, false);
+            return Err((None, false));
         }
         let ref_url = ref_url.unwrap();
         let ref_domain = ref_url.domain().unwrap_or("").to_string();
@@ -280,12 +311,13 @@ fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
         let ref_url = Url::parse(referrer_url).unwrap();
         let mut path = Path::new(ref_url.path());
         if let Some(parent) = path.parent() {
+            // TODO: handle multiple parents, such as "../../politics/congress".
             path = parent;
         }
         let mut mutable_ref_url = ref_url.clone();
         mutable_ref_url.set_path(path.to_str().unwrap());
         mutable_ref_url.join(&url[3..]).unwrap().to_string();
-        formatted_url = format!("{}{}", mutable_ref_url, url);
+        formatted_url = format!("{}{}", mutable_ref_url, url.trim_start_matches(".."));
     } else if url.starts_with("clkn/http/") {
         // This is a redirect URL from Google Ads.
         formatted_url = format!("http://{}", url.trim_start_matches("clkn/http/"));
@@ -295,7 +327,7 @@ fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
         let ref_url = Url::parse(referrer_url);
         if ref_url.is_err() {
             tools::debug_log(&format!("Invalid referrer URL: {}", referrer_url));
-            return (None, false);
+            return Err((None, false));
         }
         let ref_url = ref_url.unwrap();
         let ref_domain = ref_url.domain().unwrap_or("").to_string();
@@ -312,25 +344,7 @@ fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
         mutable_ref_url.join(&url[3..]).unwrap().to_string();
         formatted_url = format!("{}{}", mutable_ref_url, url);
     }
-
-    if let Ok(parsed_url) = Url::parse(&formatted_url) {
-        // Check if the domain of the URL is in the list of permitted domains.
-        if let Some(domain) = parsed_url.domain() {
-            if (consts::FREE_CRAWL || consts::PERMITTED_DOMAINS.iter().any(|&d| domain.eq(d)))
-                  && !consts::BLACKLIST_DOMAINS.iter().any(|&d| domain.eq(d)) {
-                return (Some(parsed_url), true);
-            } else {
-                // If the domain isn't in the list of permitted domains..
-                tools::debug_log(&format!("Domain {} isn't in the list of permitted domains: {:?}", domain, parsed_url));
-                return (Some(parsed_url), false);
-            }
-        } else {
-            // If the URL doesn't have a domain..
-            tools::debug_log(&format!("URL {} doesn't have a domain", formatted_url));
-            return (Some(parsed_url), false);
-        }
-    }
-    (None, false)
+    Ok(formatted_url)
 }
 
 pub(crate) fn timed_crawl_website(db_conn: Connection, pool: Arc<ThreadPool>, url: Url) {
@@ -384,8 +398,7 @@ mod tests {
     #[test]
     fn test_is_valid_site() {
         let url = "https://www.cnn.com";
-        let referer  = "https://www.cnn.com";
-        let (_, is_valid) = is_valid_site(url, &referer.to_string());
+        let (_, is_valid) = is_valid_site(url);
         assert!(is_valid);
     }
 }

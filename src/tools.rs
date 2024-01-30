@@ -4,15 +4,18 @@ use regex::Regex;
 use reqwest::Url;
 use robotstxt::DefaultMatcher;
 use crate::constants as consts;
+use crate::sqlite;
 use lazy_static::lazy_static;
+use std::sync::Arc;
+use rusqlite::Connection;
 
 pub(crate) fn debug_log(log_message: &str) {
     if consts::DEBUG {
-        eprintln!("{}", log_message);
+        println!("{}", log_message);
     }
 }
 
-pub(crate) fn is_robots_txt_blocked(url: Url) -> bool {
+pub(crate) fn is_robots_txt_blocked(db_conn: &Arc<Mutex<Connection>>, url: Url, referrer_url: &String) -> bool {
     // We have to cache this or its death for performance.
     let domain = url.domain().unwrap();
     let robots_txt = INMEMORY_CACHE.get(domain).unwrap_or_else(|| {
@@ -31,7 +34,13 @@ pub(crate) fn is_robots_txt_blocked(url: Url) -> bool {
     });
 
     let mut matcher = DefaultMatcher::default();
-    !matcher.allowed_by_robots(&robots_txt, consts::USER_AGENTS.into_iter().collect(), url.as_str())
+    let blocked = !matcher.allowed_by_robots(&robots_txt, consts::USER_AGENTS.into_iter().collect(), url.as_str());
+    if blocked {
+        if let Err(e) = sqlite::mark_url_blocked(&mut db_conn.lock().unwrap(), &url.to_string(), referrer_url) {
+            debug_log(&format!("Failed to mark URL {} as blocked in SQLite: {}", url, e));
+        }
+    }
+    blocked
 }
 
 pub(crate) fn format_url_for_storage(url: String) -> String{

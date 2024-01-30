@@ -27,14 +27,22 @@ pub(crate) fn connect_sqlite_and_migrate() -> Result<Option<Connection>, Box<dyn
 pub(crate) fn insert_visited_site(conn: &Connection, visited_site: crawl::VisitedSite) -> Result<bool, Box<dyn Error>> {
     let visited_at = visited_site.visited_at().format("%Y-%m-%d %H:%M:%S").to_string();
     conn.execute("
-        INSERT INTO visited (url, referrer, last_visited_at) VALUES (?1, ?2, ?3)
-        ON CONFLICT(url) DO UPDATE SET referrer = ?2, last_visited_at = strftime('%Y-%m-%d %H:%M:%S', 'now');
+        INSERT INTO visited (url, referrer, last_visited_at, is_blocked) VALUES (?1, ?2, ?3, 0)
+        ON CONFLICT(url) DO UPDATE SET referrer = ?2, last_visited_at = strftime('%Y-%m-%d %H:%M:%S', 'now'), is_blocked = 0;
         ", &[visited_site.url(), visited_site.referrer(), &visited_at])?;
     Ok(true)
 }
 
 pub(crate) fn mark_url_complete(conn: &Connection, url: &String) -> Result<bool, Box<dyn Error>> {
     conn.execute("UPDATE visited SET is_complete = 1 WHERE url = ?1", &[url])?;
+    Ok(true)
+}
+
+pub(crate) fn mark_url_blocked(conn: &Connection, url: &String, referrer: &String) -> Result<bool, Box<dyn Error>> {
+    conn.execute("
+        INSERT INTO visited (url, referrer, last_visited_at, is_blocked) VALUES (?1, ?2, strftime('%Y-%m-%d %H:%M:%S', 'now'), 1)
+        ON CONFLICT(url) DO UPDATE SET referrer = ?2, last_visited_at = strftime('%Y-%m-%d %H:%M:%S', 'now', is_blocked = 1);
+        ", &[url, referrer])?;
     Ok(true)
 }
 
