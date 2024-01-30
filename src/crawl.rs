@@ -252,6 +252,9 @@ fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
     let mut formatted_url = url.to_string();
     if url == "" || url == "/" {
         return (None, false);
+    } else if url.starts_with("//") {
+        // Protocol-relative URL. such as "//www.cnn.com".
+        formatted_url = format!("https:{}", url);
     } else if url.starts_with("/") {
         // Relative path to a url. such as "/politics/congress".
         let ref_url = Url::parse(referrer_url);
@@ -271,7 +274,7 @@ fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
         return (None, false);
     } else if url.starts_with("javascript") {
         return (None, false);
-    }  else if !url.starts_with("http") {
+    } else if !url.starts_with("http") {
         tools::debug_log(&format!("Invalid URL: {}", url));
         return (None, false);
     }
