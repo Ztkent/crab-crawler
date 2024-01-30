@@ -15,9 +15,17 @@ pub(crate) fn debug_log(log_message: &str) {
 pub(crate) fn is_robots_txt_blocked(url: Url) -> bool {
     // We have to cache this or its death for performance.
     let domain = url.domain().unwrap();
-    let robots_url: String = format!("https://{}/robots.txt", domain);
     let robots_txt = INMEMORY_CACHE.get(domain).unwrap_or_else(|| {
-        let curr_robots_txt = reqwest::blocking::get(robots_url.as_str()).unwrap().text().unwrap();
+        let curr_robots_txt = match reqwest::blocking::get(format!("https://{}/robots.txt", domain)) {
+            Ok(response) => response.text().unwrap(),
+            Err(_) => match reqwest::blocking::get(format!("http://{}/robots.txt", domain)) {
+                Ok(response) => match response.text() {
+                    Ok(text) => text,
+                    Err(_) => return "".to_string(),
+                },
+                Err(_) => return "".to_string(),
+            },
+        };
         INMEMORY_CACHE.set(domain.to_string(), curr_robots_txt.clone());
         curr_robots_txt
     });

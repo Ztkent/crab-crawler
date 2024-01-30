@@ -1,7 +1,7 @@
 use reqwest::{Error, Url, header::{self, HeaderValue}};
 use rusqlite::Connection;
 use scraper::{Html, Selector};
-use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
+use std::{path::Path, sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}}};
 use rayon::{ThreadPool, prelude::*};
 use chrono::{Local, DateTime};
 use rand::seq::SliceRandom;
@@ -215,22 +215,20 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
         let (link_url, is_valid) = is_valid_site(&link, referrer_url);
         if is_valid {
             if let Some(link_url) = link_url {
-                // Check if this URL should be ignored due to robots.txt
-                if consts::RESPECT_ROBOTS && tools::is_robots_txt_blocked(link_url.clone()) {
-                    if consts::DEBUG {
-                        tools::debug_log(&format!("Ignoring robots.txt blocked URL: {}", link_url));
-                    }
-                    return None;
-                }
-                
-                // Check if we have already seen this URL, or if it is already marked as complete.
                 let formatted_link_url = tools::format_url_for_storage(link_url.to_string());
                 if seen.lock().unwrap().contains(&formatted_link_url) {
+                    // Check if we have already seen this URL
                     tools::debug_log(&format!("Ignoring previously seen URL: {}", formatted_link_url));
                     return None;
                 } else if sqlite::is_previously_completed_url(&mut db_conn.lock().unwrap(), &formatted_link_url).unwrap().unwrap() {
+                    // Check if this URL has already been completed
                     seen.lock().unwrap().insert(formatted_link_url.clone());
                     tools::debug_log(&format!("Ignoring completed URL: {}", formatted_link_url));
+                    return None;
+                } else if consts::RESPECT_ROBOTS && tools::is_robots_txt_blocked(link_url.clone()) {
+                    // Check if this URL should be ignored due to robots.txt
+                    seen.lock().unwrap().insert(formatted_link_url.clone());
+                    tools::debug_log(&format!("Ignoring robots.txt blocked URL: {}", link_url));
                     return None;
                 }
                 seen.lock().unwrap().insert(formatted_link_url.clone());
@@ -250,7 +248,16 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
 // Determine if a site or relative path is valid.
 fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
     let mut formatted_url = url.to_string();
-    if url == "" || url == "/" {
+    if url == "" || url == "/" || url == "#" || url == "?" {
+        return (None, false);
+    } else if url.starts_with("mailto") || url.starts_with("whatsapp") || 
+        url.starts_with("tel") || url.starts_with("sms") || url.starts_with("facetime") || 
+        url.starts_with("skype") || url.starts_with("slack") || url.starts_with("zoom") {
+        return (None, false);
+    } else if url.starts_with("javascript") {
+        return (None, false);
+    } else if url.starts_with("#") {
+        // Same page, another anchor i.e. "#top"
         return (None, false);
     } else if url.starts_with("//") {
         // Protocol-relative URL. such as "//www.cnn.com".
@@ -265,18 +272,45 @@ fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
         let ref_url = ref_url.unwrap();
         let ref_domain = ref_url.domain().unwrap_or("").to_string();
         if consts::LOG_RELATIVE {
-            eprintln!("{}", format!("Relative: {} + {}", ref_domain, formatted_url));
+            eprintln!("{}", format!("Relative: {} + {}", ref_domain, url));
         }
-        formatted_url = format!("{}{}", ref_domain, formatted_url);
-    } else if url.starts_with("#") {
-        return (None, false);
-    } else if url.starts_with("mailto") {
-        return (None, false);
-    } else if url.starts_with("javascript") {
-        return (None, false);
+        formatted_url = format!("{}{}", ref_domain, url);
+    } else if url.starts_with("../") {
+        // Relative path to a url. such as "../politics/congress".
+        let ref_url = Url::parse(referrer_url).unwrap();
+        let mut path = Path::new(ref_url.path());
+        if let Some(parent) = path.parent() {
+            path = parent;
+        }
+        let mut mutable_ref_url = ref_url.clone();
+        mutable_ref_url.set_path(path.to_str().unwrap());
+        mutable_ref_url.join(&url[3..]).unwrap().to_string();
+        formatted_url = format!("{}{}", mutable_ref_url, url);
+    } else if url.starts_with("clkn/http/") {
+        // This is a redirect URL from Google Ads.
+        formatted_url = format!("http://{}", url.trim_start_matches("clkn/http/"));
+    } else if url.starts_with("clkn/rel/") {
+        // This is a redirect URL from Google Ads.
+        // Relative path to a url. such as "/politics/congress".
+        let ref_url = Url::parse(referrer_url);
+        if ref_url.is_err() {
+            tools::debug_log(&format!("Invalid referrer URL: {}", referrer_url));
+            return (None, false);
+        }
+        let ref_url = ref_url.unwrap();
+        let ref_domain = ref_url.domain().unwrap_or("").to_string();
+        formatted_url = format!("{}{}", ref_domain, url.trim_start_matches("clkn/rel/"));
     } else if !url.starts_with("http") {
-        tools::debug_log(&format!("Invalid URL: {}", url));
-        return (None, false);
+        // Likely a relative path to a url. such as "politics/congress.html".
+        let ref_url = Url::parse(referrer_url).unwrap();
+        let mut path = Path::new(ref_url.path());
+        if let Some(parent) = path.parent() {
+            path = parent;
+        }
+        let mut mutable_ref_url = ref_url.clone();
+        mutable_ref_url.set_path(path.to_str().unwrap());
+        mutable_ref_url.join(&url[3..]).unwrap().to_string();
+        formatted_url = format!("{}{}", mutable_ref_url, url);
     }
 
     if let Ok(parsed_url) = Url::parse(&formatted_url) {

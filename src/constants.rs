@@ -2,7 +2,7 @@
 pub(crate) const STARTING_URL: &str = "https://www.cnn.com";
 pub(crate) const PERMITTED_DOMAINS: [&str; 1] = ["www.cnn.com"];
 pub(crate) const BLACKLIST_DOMAINS: [&str; 0] = [];
-pub(crate) const FREE_CRAWL: bool = false;
+pub(crate) const FREE_CRAWL: bool = true;
 // "cnn.com/politics/congress"
 
 // Crawler Settings
@@ -15,7 +15,7 @@ pub(crate) const CRAWLER_REQUEST_TIMEOUT: u64 = 5;
 pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 5000; 
 
 // Logging Options
-pub(crate) const DEBUG: bool = false;
+pub(crate) const DEBUG: bool = true;
 pub(crate) const LIVE_LOGGING: bool = true;
 
 // Database Settings
