@@ -267,7 +267,7 @@ fn is_valid_site(url: &str, referrer_url: &String) -> (Option<Url>, bool) {
         if consts::LOG_RELATIVE {
             eprintln!("{}", format!("Relative: {} + {}", ref_domain, formatted_url));
         }
-        formatted_url = format!("{}{}", referrer_url, formatted_url);
+        formatted_url = format!("{}{}", ref_domain, formatted_url);
     } else if url.starts_with("#") {
         return (None, false);
     } else if url.starts_with("mailto") {
