@@ -278,9 +278,10 @@ fn is_valid_site(url: &str) -> (Option<Url>, bool) {
 
 // Handle any relative paths that we've encountered.
 fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Option<Url>, bool)> {
-    let mut formatted_url = url.to_string();
+    let mut formatted_url = url.trim().to_string();
     // Skip any empty URLs
-    if url == "" || url == "/" || url == "#" || url == "?" || url == " " || url == "\\\""{
+    if url == "" || url == "/" || url == "#" || url.starts_with("?") || 
+        url == " " || url == "\\\"" || url == "..//"{
         return Err((None, false));
     }
     // Remove any anchors from the URL
@@ -293,7 +294,7 @@ fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Op
     }
 
     // Handle any relative paths
-    if formatted_url.starts_with("mailto") || formatted_url.starts_with("whatsapp") || 
+    if formatted_url.starts_with("mailto") || formatted_url.starts_with("whatsapp") || formatted_url.starts_with("fb-messenger") || 
         formatted_url.starts_with("tel") || formatted_url.starts_with("sms") || formatted_url.starts_with("facetime") || 
         formatted_url.starts_with("skype") || formatted_url.starts_with("slack") || formatted_url.starts_with("zoom") {
         return Err((None, false));
@@ -301,6 +302,20 @@ fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Op
         return Err((None, false));
     } else if formatted_url.contains(":invalid") {
         return Err((None, false));
+    } else if formatted_url.starts_with("clkn/http/") {
+        // This is a redirect URL from Google Ads.
+        formatted_url = format!("http://{}", formatted_url.trim_start_matches("clkn/http/"));
+    } else if formatted_url.starts_with("clkn/rel/") {
+        // This is a redirect URL from Google Ads.
+        // Relative path to a url. such as "/politics/congress".
+        let ref_url = Url::parse(referrer_url);
+        if ref_url.is_err() {
+            tools::debug_log(&format!("Invalid referrer URL: {}", referrer_url));
+            return Err((None, false));
+        }
+        let ref_url = ref_url.unwrap();
+        let ref_domain = ref_url.domain().unwrap_or("").to_string();
+        formatted_url = format!("{}{}", ref_domain, formatted_url.trim_start_matches("clkn/rel/"));
     } else if formatted_url.starts_with("//") {
         // Protocol-relative URL. such as "//www.cnn.com".
         formatted_url = format!("https:{}", formatted_url);
@@ -318,32 +333,32 @@ fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Op
         // Relative path to a url. such as "../politics/congress".
         let ref_url = Url::parse(referrer_url).unwrap();
         let mut path = Path::new(ref_url.path());
+        while formatted_url.starts_with("../") {
+            formatted_url = formatted_url[3..].to_string();
+            if let Some(parent) = path.parent() {
+                path = parent;
+            }
+        }
+        let mut mutable_ref_url = ref_url.clone();
+        mutable_ref_url.set_path(path.to_str().unwrap());
+        // Handle the slash at the end of the path
+        if !mutable_ref_url.as_str().ends_with("/") && !formatted_url.starts_with("/") {
+            mutable_ref_url.set_path(format!("{}/", mutable_ref_url.path()).as_str());
+        }
+        formatted_url = format!("{}{}", mutable_ref_url, formatted_url.trim_start_matches(".."));
+    } else if formatted_url.starts_with("./") {
+        // Another folder up, such as "./politics/congress".
+        let ref_url = Url::parse(referrer_url).unwrap();
+        let mut path = Path::new(ref_url.path());
         if let Some(parent) = path.parent() {
-            // TODO: handle multiple parents, such as "../../politics/congress".
             path = parent;
         }
         let mut mutable_ref_url = ref_url.clone();
         mutable_ref_url.set_path(path.to_str().unwrap());
-        // TODO: 3 can be out of bounds if the path is too short.
-        mutable_ref_url.join(&formatted_url[3..]).unwrap().to_string();
-        formatted_url = format!("{}{}", mutable_ref_url, formatted_url.trim_start_matches(".."));
-    } else if formatted_url.starts_with("./") {
-        //TODO: are we landing here? Yes: ref: "https://workspace.google.com/"
-        return Err((None, false));
-    } else if formatted_url.starts_with("clkn/http/") {
-        // This is a redirect URL from Google Ads.
-        formatted_url = format!("http://{}", formatted_url.trim_start_matches("clkn/http/"));
-    } else if formatted_url.starts_with("clkn/rel/") {
-        // This is a redirect URL from Google Ads.
-        // Relative path to a url. such as "/politics/congress".
-        let ref_url = Url::parse(referrer_url);
-        if ref_url.is_err() {
-            tools::debug_log(&format!("Invalid referrer URL: {}", referrer_url));
-            return Err((None, false));
+        if !mutable_ref_url.as_str().ends_with("/") && !formatted_url.starts_with("/") {
+            mutable_ref_url.set_path(format!("{}/", mutable_ref_url.path()).as_str());
         }
-        let ref_url = ref_url.unwrap();
-        let ref_domain = ref_url.domain().unwrap_or("").to_string();
-        formatted_url = format!("{}{}", ref_domain, formatted_url.trim_start_matches("clkn/rel/"));
+        formatted_url = format!("{}{}", mutable_ref_url, formatted_url.trim_start_matches("./"));
     } else if !formatted_url.starts_with("http") {
         // Likely a relative path to a url. such as "politics/congress.html".
         let ref_url = Url::parse(referrer_url).unwrap();
@@ -353,8 +368,9 @@ fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Op
         }
         let mut mutable_ref_url = ref_url.clone();
         mutable_ref_url.set_path(path.to_str().unwrap());
-        // TODO: 3 can be out of bounds if the path is too short.
-        mutable_ref_url.join(&formatted_url[3..]).unwrap().to_string();
+        if !mutable_ref_url.as_str().ends_with("/") && !formatted_url.starts_with("/") {
+            mutable_ref_url.set_path(format!("{}/", mutable_ref_url.path()).as_str());
+        }
         formatted_url = format!("{}{}", mutable_ref_url, formatted_url);
     }
     if consts::LOG_RELATIVE_PATHS {

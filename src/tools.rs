@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::panic;
 use regex::Regex;
 use reqwest::Url;
 use robotstxt::DefaultMatcher;
@@ -33,9 +34,17 @@ pub(crate) fn is_robots_txt_blocked(db_conn: &Arc<Mutex<Connection>>, url: Url, 
         curr_robots_txt
     });
 
-    let mut matcher = DefaultMatcher::default();
-    //TODO: i think this can panic if the robots.txt is invalid
-    let blocked = !matcher.allowed_by_robots(&robots_txt, consts::USER_AGENTS.into_iter().collect(), url.as_str());
+    // This can panic if the robots.txt is invalid
+    let result = panic::catch_unwind(|| {
+        !DefaultMatcher::default().allowed_by_robots(&robots_txt, consts::USER_AGENTS.into_iter().collect(), url.as_str())
+    });
+    let blocked = match result {
+        Ok(blocked) => blocked,
+        Err(_) => {
+            debug_log(&format!("An error occurred while checking if the URL {} is allowed by robots.txt", url));
+            false
+        }
+    };
     if blocked {
         if let Err(e) = sqlite::mark_url_blocked(&mut db_conn.lock().unwrap(), &url.to_string(), referrer_url) {
             debug_log(&format!("Failed to mark URL {} as blocked in SQLite: {}", url, e));
