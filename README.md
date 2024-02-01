@@ -1,5 +1,5 @@
 # 🦀 data-crawler 🦀 
-This is a rust web crawler, it is designed to collect training data.  
+This is a rust web crawler, it is designed to collect training data from the web.  
 
 ## Configuration
 
