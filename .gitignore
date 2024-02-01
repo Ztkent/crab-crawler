@@ -1,5 +1,7 @@
+target
 target/*
 Cargo.lock
 .vscode/settings.json
 db/*.db*
 *.jpg
+*.svg

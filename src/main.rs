@@ -10,6 +10,8 @@ use std::{
 mod crawl;
 mod tools;
 mod sqlite;
+mod http;
+mod data;
 mod constants;
 use constants as consts;
 
@@ -87,7 +89,7 @@ fn main() {
     }
 
     // Print the number of URLs visited
-    println!("Visited {} URLs.", crawl::URLS_VISITED.load(std::sync::atomic::Ordering::SeqCst));
+    println!("Visited {} URLs.", data::URLS_VISITED.load(std::sync::atomic::Ordering::SeqCst));
     if consts::SQLITE_ENABLED {
         println!("DB Contains {:?} URLs, {:?} complete.", sqlite::connect_and_get_total_rows().unwrap(), sqlite::connect_and_get_completed_rows().unwrap());
     }

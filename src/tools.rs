@@ -1,14 +1,20 @@
-use std::collections::HashMap;
-use std::sync::Mutex;
+use std::collections::{HashMap, HashSet};
 use std::panic;
+use std::sync::{Arc, Mutex};
+use lazy_static::lazy_static;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::ThreadPool;
 use regex::Regex;
 use reqwest::Url;
 use robotstxt::DefaultMatcher;
-use crate::constants as consts;
-use crate::sqlite;
-use lazy_static::lazy_static;
-use std::sync::Arc;
 use rusqlite::Connection;
+use scraper::{Html, Selector};
+
+use crate::constants as consts;
+use crate::data;
+use crate::http;
+use crate::sqlite;
+
 
 pub(crate) fn debug_log(log_message: &str) {
     if consts::DEBUG {
@@ -51,6 +57,142 @@ pub(crate) fn is_robots_txt_blocked(db_conn: &Arc<Mutex<Connection>>, url: Url, 
         }
     }
     blocked
+}
+
+// Save image data, and the links to the database
+pub(crate) fn save_image_links(pool: &Arc<ThreadPool>, site_urls: &data::SiteUrls, db_conn: &Arc<Mutex<Connection>>, target_url: &Url) {
+    pool.install(|| {
+        site_urls.img_urls.clone().into_par_iter().for_each(|url| {
+            let result = http::fetch_image(&url);
+            let image_data = match &result {
+                Ok(content) => content,
+                Err(e) => {
+                    debug_log(&format!("Failed to fetch image from {}: {}", url, e));
+                    return
+                }
+            };
+            // Check if we got any image data
+            if image_data.len() == 0 {
+                return
+            }
+
+            // Expect an image name at the end of the url, grab it
+            let name = url.path_segments().and_then(|segments| segments.last()).unwrap_or(".jpg");
+            let _ = sqlite::insert_image(&mut db_conn.lock().unwrap(), &format_url_for_storage(target_url.to_string()),&format_url_for_storage(url.to_string()), image_data, &name.to_string(), result.is_ok())
+                .map_err(|e| debug_log(&format!("Failed to insert image into SQLite: {}", e)));
+        });
+    });
+}
+
+// Parse HTML content into a scraper::Html object
+pub(crate) fn parse_html(html: &str) -> Result<Html, Box<dyn std::error::Error>> {
+    let document = Html::parse_document(html);
+    Ok(document)
+}
+
+// Helper function to extract attributes from elements that match a selector
+fn extract_attributes(doc: &Html, selector_str: &str, attr: &str) -> Vec<String> {
+    let mut urls = Vec::new();
+    let selector = Selector::parse(selector_str).unwrap();
+    for element in doc.select(&selector) {
+        if let Some(url) = element.value().attr(attr) {
+            urls.push(url.to_string());
+        }
+    }
+    urls
+}
+
+// Extract all links and image URLs from parsed HTML
+pub(crate) fn extract_links(doc: &Html) -> Result<data::SiteLinks, Box<dyn std::error::Error>> {
+    let link_links = extract_attributes(doc, "a[href]", "href");
+    let img_links = extract_attributes(doc, "img[src]", "src");
+    // let stylesheet_urls = extract_attributes(doc, "link[rel=stylesheet][href]", "href");
+    // let script_urls = extract_attributes(doc, "script[src]", "src");
+    // let object_data_urls = extract_attributes(doc, "object[data]", "data");
+    // let embed_urls = extract_attributes(doc, "embed[src]", "src");
+    // let video_urls = extract_attributes(doc, "video[src]", "src");
+    // let audio_urls = extract_attributes(doc, "audio[src]", "src");
+    // let source_urls = extract_attributes(doc, "source[src]", "src");
+
+    Ok(data::SiteLinks {
+        link_links,
+        img_links,
+    })
+}
+
+// Save some recursion, remove duplicates and links we've seen.
+pub(crate) fn filter_links(links: Vec<String>, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> HashSet<Url> {
+    let mut links_set: HashSet<Url> = HashSet::new();
+    links_set.extend(links.into_iter().filter_map(|mut link: String| {
+        // Handle any links that are relative paths
+        link = match http::handle_relative_paths(&link, referrer_url) {
+            Ok(value) => value,
+            Err(_) => {
+                return None;
+            },
+        };
+        
+        // Check if the link is valid
+        let (link_url, is_valid) = is_valid_site(&link);
+        if is_valid {
+            if let Some(link_url) = link_url {
+                let formatted_link_url = format_url_for_storage(link_url.to_string());
+                if seen.lock().unwrap().contains(&formatted_link_url) {
+                    // Check if we have already seen this URL
+                    debug_log(&format!("Ignoring previously seen URL: {}", formatted_link_url));
+                    return None;
+                } else if sqlite::is_previously_completed_url(&mut db_conn.lock().unwrap(), &formatted_link_url).unwrap().unwrap() {
+                    // Check if this URL has already been completed
+                    seen.lock().unwrap().insert(formatted_link_url.clone());
+                    debug_log(&format!("Ignoring completed URL: {}", formatted_link_url));
+                    return None;
+                } else if consts::RESPECT_ROBOTS && is_robots_txt_blocked(db_conn, link_url.clone(), &referrer_url) {
+                    // Check if this URL should be ignored due to robots.txt
+                    seen.lock().unwrap().insert(formatted_link_url.clone());
+                    debug_log(&format!("Ignoring robots.txt blocked URL: {}", link_url));
+                    return None;
+                }
+                seen.lock().unwrap().insert(formatted_link_url.clone());
+                return Some(link_url);
+            }
+        }
+        None
+    }));
+    links_set
+}
+
+pub(crate) fn filter_links_to_urls(links: data::SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> data::SiteUrls {
+    let link_links_set = filter_links(links.link_links, seen, db_conn, referrer_url);
+    let img_links_set = filter_links(links.img_links, seen, db_conn, referrer_url);
+    // Convert the HashSet to a Vec, preventing duplicates.
+    let link_urls_vec: Vec<Url> = link_links_set.into_iter().collect();
+    let img_urls_vec: Vec<Url> = img_links_set.into_iter().collect();
+    data::SiteUrls {
+        link_urls: link_urls_vec,
+        img_urls: img_urls_vec,
+    }
+}
+
+// Determine if a site or relative path is valid.
+pub(crate) fn is_valid_site(url: &str) -> (Option<Url>, bool) {
+    if let Ok(parsed_url) = Url::parse(&url) {
+        // Check if the domain of the URL is in the list of permitted domains.
+        if let Some(domain) = parsed_url.domain() {
+            if (consts::FREE_CRAWL || consts::PERMITTED_DOMAINS.iter().any(|&d| domain.eq(d)))
+                  && !consts::BLACKLIST_DOMAINS.iter().any(|&d| domain.eq(d)) {
+                return (Some(parsed_url), true);
+            } else {
+                // If the domain isn't in the list of permitted domains..
+                debug_log(&format!("Domain {} isn't in the list of permitted domains: {:?}", domain, parsed_url));
+                return (Some(parsed_url), false);
+            }
+        } else {
+            // If the URL doesn't have a domain..
+            debug_log(&format!("URL {} doesn't have a domain", url));
+            return (Some(parsed_url), false);
+        }
+    }
+    (None, false)
 }
 
 // Run this before storing a url. Prevent storing the same url multiple times.
@@ -102,5 +244,41 @@ impl<F: FnOnce()> Drop for Defer<F> {
         if let Some(f) = self.f.take() {
             f();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_parse_html() {
+        let html = "<html><body><h1>Hello, world!</h1></body></html>";
+        let result = parse_html(html);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_attributes() {
+        let html = "<html><body><a href='https://www.cnn.com'>Link</a></body></html>";
+        let document = Html::parse_document(html);
+        let result = extract_attributes(&document, "a[href]", "href");
+        assert_eq!(result, vec!["https://www.cnn.com"]);
+    }
+
+    #[test]
+    fn test_extract_links() {
+        let html = "<html><body><a href='https://www.cnn.com'>Link</a></body></html>";
+        let document = Html::parse_document(html);
+        let result = extract_links(&document);
+        assert!(result.is_ok());
+        let site_urls = result.unwrap();
+        assert_eq!(site_urls.link_links, vec!["https://www.cnn.com"]);
+    }
+
+    #[test]
+    fn test_is_valid_site() {
+        let url = "https://www.cnn.com";
+        let (_, is_valid) = is_valid_site(url);
+        assert!(is_valid);
     }
 }
