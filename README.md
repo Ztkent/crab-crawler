@@ -45,4 +45,5 @@ To enable this:
 - Swaps the user agent between requests.
 - Respects robots.txt files.
 - Supports throttling and timeouts.
+- Handles relative paths and redirects.
 - Stores selected data in a sqlite database for review.
