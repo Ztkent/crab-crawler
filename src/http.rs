@@ -44,7 +44,7 @@ pub(crate) fn fetch_html(db_conn: &Arc<Mutex<Connection>>, url: Url) -> Result<S
    Ok(body)
 }
 
-// 
+// Fetch image binary data from a given URL
 pub(crate) fn fetch_image(url: &Url) -> Result<Vec<u8>, reqwest::Error> {
     // Create a new HTTP client
     let client = reqwest::blocking::Client::builder()
