@@ -87,16 +87,16 @@ pub(crate) fn fetch_image(url: &Url) -> Result<Vec<u8>, reqwest::Error> {
 // Handle any relative paths that we've encountered.
 pub(crate) fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Option<Url>, bool)> {
     let mut formatted_url = url.trim().to_string();
+    // Remove any anchors from the URL
+    if let Some(index) = url.find("#") {
+        formatted_url = formatted_url[..index].trim().to_string();
+    } 
+
     if formatted_url.starts_with("www") || formatted_url.starts_with("http") {
         // This is a valid URL
         return Ok(formatted_url);
-    } else if let Some(index) = url.find("#") {
-        // Remove any anchors from the URL
-        formatted_url = formatted_url[..index].trim().to_string();
-    } 
-    
-     // Skip any empty URLs
-    if formatted_url == "" || formatted_url == "/" || formatted_url == "#" || formatted_url.starts_with("?") || formatted_url == "\\\"" || formatted_url == "..//"{
+    } else if formatted_url == "" || formatted_url == "/" || formatted_url == "#" || formatted_url.starts_with("?") || formatted_url == "\\\"" || formatted_url == "..//"{
+        // Skip any empty URLs
         return Err((None, false));
     }
 
@@ -166,12 +166,7 @@ pub(crate) fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<
     } else if formatted_url.starts_with("./") {
         // Another folder up, such as "./politics/congress".
         let ref_url = Url::parse(referrer_url).unwrap();
-        let mut path = Path::new(ref_url.path());
-        if let Some(parent) = path.parent() {
-            path = parent;
-        }
         let mut mutable_ref_url = ref_url.clone();
-        mutable_ref_url.set_path(path.to_str().unwrap());
         if !mutable_ref_url.as_str().ends_with("/") && !formatted_url.starts_with("/") {
             mutable_ref_url.set_path(format!("{}/", mutable_ref_url.path()).as_str());
         }
@@ -180,8 +175,9 @@ pub(crate) fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<
         // Likely a relative path to a url. such as "politics/congress.html".
         let ref_url = Url::parse(referrer_url).unwrap();
         let mut mutable_ref_url = ref_url.clone();
-        if !mutable_ref_url.as_str().ends_with("/") {
-            let mut path = Path::new(ref_url.path());
+        // If we're looking at a file path, cut back to the folder
+        let mut path = Path::new(ref_url.path());
+        if mutable_ref_url.as_str().ends_with(".html") {
             if let Some(parent) = path.parent() {
                 path = parent;
             }
@@ -219,5 +215,84 @@ mod tests {
         let db_conn: Arc<Mutex<Connection>> = Arc::new(Mutex::new(db_conn));
         let result = fetch_html(&db_conn, url);
         assert!(result.is_ok());
+    }
+    #[test]
+    fn test_handle_relative_paths_valid_url() {
+        let url = "http://www.example.com";
+        let referrer_url = &"http://www.referrer.com".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert_eq!(result.unwrap(), url);
+    }
+
+    #[test]
+    fn test_handle_relative_paths_anchor() {
+        let url = "http://www.example.com#anchor";
+        let referrer_url = &"http://www.referrer.com".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert_eq!(result.unwrap(), "http://www.example.com");
+    }
+
+    #[test]
+    fn test_handle_relative_paths_relative_path() {
+        let url = "/relative/path";
+        let referrer_url = &"http://www.example.com".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert_eq!(result.unwrap(), "www.example.com/relative/path");
+    }
+
+    #[test]
+    fn test_handle_relative_paths_protocol_relative_url() {
+        let url = "//www.example.com";
+        let referrer_url = &"http://www.referrer.com".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert_eq!(result.unwrap(), "https://www.example.com");
+    }
+
+    #[test]
+    fn test_handle_relative_paths_relative_path_with_dot_dot() {
+        let url = "../relative/path";
+        let referrer_url = &"http://www.example.com/folder".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert_eq!(result.unwrap(), "http://www.example.com/relative/path");
+    }
+
+    #[test]
+    fn test_handle_relative_paths_relative_path_with_double_dot_dot() {
+        let url = "../../relative/path";
+        let referrer_url = &"http://www.example.com/folder/folder2".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert_eq!(result.unwrap(), "http://www.example.com/relative/path");
+    }
+
+    #[test]
+    fn test_handle_relative_paths_relative_path_with_dot() {
+        let url = "./relative/path";
+        let referrer_url = &"http://www.example.com/folder".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert_eq!(result.unwrap(), "http://www.example.com/folder/relative/path");
+    }
+
+    #[test]
+    fn test_handle_relative_paths_relative_path_without_slash() {
+        let url = "relative/path";
+        let referrer_url = &"http://www.example.com/folder".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert_eq!(result.unwrap(), "http://www.example.com/folder/relative/path");
+    }
+
+    #[test]
+    fn test_handle_relative_paths_relative_file_path_without_slash() {
+        let url = "relative/path";
+        let referrer_url = &"http://www.example.com/file.html".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert_eq!(result.unwrap(), "http://www.example.com/relative/path");
+    }
+
+    #[test]
+    fn test_handle_relative_paths_invalid_url() {
+        let url = "url:invalid";
+        let referrer_url = &"http://www.referrer.com".to_string();
+        let result = handle_relative_paths(url, referrer_url);
+        assert!(result.is_err());
     }
 }
