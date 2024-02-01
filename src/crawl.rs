@@ -57,6 +57,7 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     };
 
     // Extract the links from the Html object
+    // TODO: Handle Sitemaps
     let site_links = match tools::extract_links(&doc){
         Ok(links) => links,
         Err(e) => {

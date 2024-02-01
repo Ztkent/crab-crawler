@@ -3,7 +3,7 @@ pub(crate) const STARTING_URL: &str = "https://www.cnn.com";
 pub(crate) const PERMITTED_DOMAINS: [&str; 1] = ["www.cnn.com"];
 pub(crate) const BLACKLIST_DOMAINS: [&str; 0] = [];
 pub(crate) const FREE_CRAWL: bool = false;
-//google.com/landing, https://workspace.google.com/
+//google.com/landing, https://workspace.google.com/, https://www.cnn.com/sitemap.html
 
 // Crawler Settings
 pub(crate) const MAX_URLS_TO_VISIT: usize = 1000;

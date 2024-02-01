@@ -106,13 +106,6 @@ fn extract_attributes(doc: &Html, selector_str: &str, attr: &str) -> Vec<String>
 pub(crate) fn extract_links(doc: &Html) -> Result<data::SiteLinks, Box<dyn std::error::Error>> {
     let link_links = extract_attributes(doc, "a[href]", "href");
     let img_links = extract_attributes(doc, "img[src]", "src");
-    // let stylesheet_urls = extract_attributes(doc, "link[rel=stylesheet][href]", "href");
-    // let script_urls = extract_attributes(doc, "script[src]", "src");
-    // let object_data_urls = extract_attributes(doc, "object[data]", "data");
-    // let embed_urls = extract_attributes(doc, "embed[src]", "src");
-    // let video_urls = extract_attributes(doc, "video[src]", "src");
-    // let audio_urls = extract_attributes(doc, "audio[src]", "src");
-    // let source_urls = extract_attributes(doc, "source[src]", "src");
 
     Ok(data::SiteLinks {
         link_links,
