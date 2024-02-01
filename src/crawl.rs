@@ -20,10 +20,11 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     
     // Format the visited URL for storage and comparison
     let formatted_target_url = tools::format_url_for_storage(target_url.to_string());
+    let formatted_referrer_url = tools::format_url_for_storage(referrer_url.clone());
     { // Scope the mutable borrow of db_conn, otherwise it will stay in scope due to recursion below.
         let mut conn = db_conn.lock().unwrap();
         // Store the visited URL
-        let visited_site = data::VisitedSite::new(formatted_target_url.clone(), referrer_url.clone(), Local::now());
+        let visited_site = data::VisitedSite::new(formatted_target_url.clone(), formatted_referrer_url.clone(), Local::now());
         data::URLS_VISITED.fetch_add(1, Ordering::SeqCst);
         if let Err(e) = sqlite::insert_visited_site(&mut conn, visited_site.clone()) {
             tools::debug_log(&format!("Failed to insert visited URL {} into SQLite: {}", formatted_target_url, e));

@@ -2,7 +2,7 @@
 pub(crate) const STARTING_URL: &str = "https://www.cnn.com";
 pub(crate) const PERMITTED_DOMAINS: [&str; 1] = ["www.cnn.com"];
 pub(crate) const BLACKLIST_DOMAINS: [&str; 0] = [];
-pub(crate) const FREE_CRAWL: bool = false;
+pub(crate) const FREE_CRAWL: bool = true;
 //google.com/landing, https://workspace.google.com/, https://www.cnn.com/sitemap.html
 
 // Crawler Settings

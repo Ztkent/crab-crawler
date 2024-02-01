@@ -52,7 +52,9 @@ pub(crate) fn is_robots_txt_blocked(db_conn: &Arc<Mutex<Connection>>, url: Url, 
         }
     };
     if blocked {
-        if let Err(e) = sqlite::mark_url_blocked(&mut db_conn.lock().unwrap(), &url.to_string(), referrer_url) {
+        let formatted_link_url = format_url_for_storage(url.to_string());
+        let formatted_referrer_url = format_url_for_storage(referrer_url.to_string());
+        if let Err(e) = sqlite::mark_url_blocked(&mut db_conn.lock().unwrap(), &formatted_link_url, &formatted_referrer_url) {
             debug_log(&format!("Failed to mark URL {} as blocked in SQLite: {}", url, e));
         }
     }
