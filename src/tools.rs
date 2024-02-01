@@ -53,30 +53,12 @@ pub(crate) fn is_robots_txt_blocked(db_conn: &Arc<Mutex<Connection>>, url: Url, 
     blocked
 }
 
+// Run this before storing a url. Prevent storing the same url multiple times.
 pub(crate) fn format_url_for_storage(url: String) -> String{
+    // capture everything after the protocol and before the query
     let re = Regex::new(r"^https?://(www\.)?([^?]*).*").unwrap();
     let formatted_url = re.replace(&url, "$2").trim_end_matches('/').to_string();
     formatted_url
-}
-
-// Defer is a helper struct that allows us to run a function when the struct is dropped.
-// Using this similar to defer in Go, we can ensure that a function is run when the current scope is exited.
-pub(crate) struct Defer<F: FnOnce()> {
-    f: Option<F>,
-}
-
-impl<F: FnOnce()> Defer<F> {
-    pub(crate) fn new(f: F) -> Defer<F> {
-        Defer { f: Some(f) }
-    }
-}
-
-impl<F: FnOnce()> Drop for Defer<F> {
-    fn drop(&mut self) {
-        if let Some(f) = self.f.take() {
-            f();
-        }
-    }
 }
 
 // A simple in-memory cache that uses a HashMap and a Mutex.
@@ -84,25 +66,41 @@ impl<F: FnOnce()> Drop for Defer<F> {
 struct InMemoryCache {
     map: Mutex<HashMap<String, String>>,
 }
-
 impl InMemoryCache {
     fn new() -> InMemoryCache {
         InMemoryCache {
             map: Mutex::new(HashMap::new()),
         }
     }
-
     fn get(&self, key: &str) -> Option<String> {
         let map = self.map.lock().unwrap();
         map.get(key).cloned()
     }
-
     fn set(&self, key: String, value: String) {
         let mut map = self.map.lock().unwrap();
         map.insert(key, value);
     }
 }
-
 lazy_static! {
     static ref INMEMORY_CACHE: InMemoryCache = InMemoryCache::new();
+}
+
+
+
+// Apparently pulling this in is a common practice. I didnt write it.
+// Using this similar to defer in Go, we can ensure that a function is run when the current scope is exited.
+pub(crate) struct Defer<F: FnOnce()> {
+    f: Option<F>,
+}
+impl<F: FnOnce()> Defer<F> {
+    pub(crate) fn new(f: F) -> Defer<F> {
+        Defer { f: Some(f) }
+    }
+}
+impl<F: FnOnce()> Drop for Defer<F> {
+    fn drop(&mut self) {
+        if let Some(f) = self.f.take() {
+            f();
+        }
+    }
 }

@@ -36,14 +36,15 @@ pub(crate) static URLS_VISITED: AtomicUsize = AtomicUsize::new(0);
 // Struct to hold all the different types of URLs
 struct SiteUrls {
     link_urls: Vec<Url>,
-    // img_urls: Vec<Url>,
+    img_urls: Vec<Url>,
     // video_urls: Vec<Url>,
     // audio_urls: Vec<Url>,
     // source_urls: Vec<Url>,
 }
 
 struct SiteLinks {
-    link_urls: Vec<String>,
+    link_links: Vec<String>,
+    img_links: Vec<String>,
 }
 
 // Recursively crawl a website, with Depth-First Search.
@@ -74,7 +75,7 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     if consts::LIVE_LOGGING {
         println!("Visiting {} from {}", target_url, referrer_url);
     }
-    let html = match fetch_html(target_url.clone()) {
+    let html = match fetch_html(&db_conn, target_url.clone()) {
         Ok(html) => html,
         Err(e) => {
             tools::debug_log(&format!("Failed to fetch HTML from {}: {}", target_url, e));
@@ -102,7 +103,11 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
 
     // Filter links to only include those that are valid, and not already seen or completed.
     let site_urls = filter_links_to_urls(site_links, &seen, &db_conn, &target_url.to_string());
-
+    // Fetch any images from the page
+    if consts::COLLECT_IMAGES {
+        save_image_links(&pool, &site_urls, &db_conn, target_url);
+    }
+    
     // Recursively crawl each link
     // This is thread-safe, and will never run more than MAX_THREADS concurrent requests.
     let success = Arc::new(Mutex::new(true));
@@ -134,8 +139,29 @@ fn crawl_website_dfs(db_conn: Arc<Mutex<Connection>>, pool: Arc<ThreadPool>, see
     false
 }
 
+
+// Save image data, and the links to the database
+fn save_image_links(pool: &Arc<ThreadPool>, site_urls: &SiteUrls, db_conn: &Arc<Mutex<Connection>>, target_url: &Url) {
+    pool.install(|| {
+        site_urls.img_urls.clone().into_par_iter().for_each(|url| {
+            let result = fetch_html(db_conn, url.clone());
+            let image_data = match &result {
+                Ok(content) => content,
+                Err(e) => {
+                    tools::debug_log(&format!("Failed to fetch image from {}: {}", url, e));
+                    return
+                }
+            };
+            // Expect an image name at the end of the url, grab it
+            let name = url.path_segments().and_then(|segments| segments.last()).unwrap_or(".jpg");
+            let _ = sqlite::insert_image(&mut db_conn.lock().unwrap(), &tools::format_url_for_storage(target_url.to_string()),&tools::format_url_for_storage(url.to_string()), image_data, &name.to_string(), result.is_ok())
+                .map_err(|e| tools::debug_log(&format!("Failed to insert image into SQLite: {}", e)));
+        });
+    });
+}
+
 // Fetch HTML from a given URL
-fn fetch_html(url: Url) -> Result<String, Error> {
+fn fetch_html(db_conn: &Arc<Mutex<Connection>>, url: Url) -> Result<String, Error> {
     // Create a new HTTP client
     let client = reqwest::blocking::Client::builder()
     .timeout(std::time::Duration::from_secs(consts::CRAWLER_REQUEST_TIMEOUT))
@@ -161,6 +187,14 @@ fn fetch_html(url: Url) -> Result<String, Error> {
         err
     })?;
     
+    // Fetch any images from the page
+    if consts::COLLECT_HTML {
+        match sqlite::insert_html(&db_conn.lock().unwrap(), &tools::format_url_for_storage(url.to_string()), &body.trim().to_string()) {
+            Ok(_) => (),
+            Err(e) => eprintln!("Failed to insert HTML into SQLite: {}", e),
+        }
+    }
+
     // Return the body of the response
    Ok(body)
 }
@@ -185,8 +219,8 @@ fn extract_attributes(doc: &Html, selector_str: &str, attr: &str) -> Vec<String>
 
 // Extract all links and image URLs from parsed HTML
 fn extract_links(doc: &Html) -> Result<SiteLinks, Box<dyn std::error::Error>> {
-    let link_urls = extract_attributes(doc, "a[href]", "href");
-    // let img_urls = extract_attributes(doc, "img[src]", "src");
+    let link_links = extract_attributes(doc, "a[href]", "href");
+    let img_links = extract_attributes(doc, "img[src]", "src");
     // let stylesheet_urls = extract_attributes(doc, "link[rel=stylesheet][href]", "href");
     // let script_urls = extract_attributes(doc, "script[src]", "src");
     // let object_data_urls = extract_attributes(doc, "object[data]", "data");
@@ -196,22 +230,15 @@ fn extract_links(doc: &Html) -> Result<SiteLinks, Box<dyn std::error::Error>> {
     // let source_urls = extract_attributes(doc, "source[src]", "src");
 
     Ok(SiteLinks {
-        link_urls,
-        // img_urls,
-        // stylesheet_urls,
-        // script_urls,
-        // object_data_urls,
-        // embed_urls,
-        // video_urls,
-        // audio_urls,
-        // source_urls,
+        link_links,
+        img_links,
     })
 }
 
 // Save some recursion, remove duplicates and links we've seen.
-fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> SiteUrls {
-    let mut link_urls_set = HashSet::new();
-    link_urls_set.extend(links.link_urls.into_iter().filter_map(|mut link: String| {
+fn filter_links(links: Vec<String>, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> HashSet<Url> {
+    let mut links_set: HashSet<Url> = HashSet::new();
+    links_set.extend(links.into_iter().filter_map(|mut link: String| {
         // Handle any links that are relative paths
         link = match handle_relative_paths(&link, referrer_url) {
             Ok(value) => value,
@@ -246,13 +273,20 @@ fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db
         }
         None
     }));
-    // Convert the HashSet to a Vec, preventing duplicates.
-    let link_urls_vec: Vec<_> = link_urls_set.into_iter().collect();
-    SiteUrls {
-        link_urls: link_urls_vec,
-    }
+    links_set
 }
 
+fn filter_links_to_urls(links: SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> SiteUrls {
+    let link_links_set = filter_links(links.link_links, seen, db_conn, referrer_url);
+    let img_links_set = filter_links(links.img_links, seen, db_conn, referrer_url);
+    // Convert the HashSet to a Vec, preventing duplicates.
+    let link_urls_vec: Vec<Url> = link_links_set.into_iter().collect();
+    let img_urls_vec: Vec<Url> = img_links_set.into_iter().collect();
+    SiteUrls {
+        link_urls: link_urls_vec,
+        img_urls: img_urls_vec,
+    }
+}
 
 // Determine if a site or relative path is valid.
 fn is_valid_site(url: &str) -> (Option<Url>, bool) {
@@ -279,18 +313,17 @@ fn is_valid_site(url: &str) -> (Option<Url>, bool) {
 // Handle any relative paths that we've encountered.
 fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Option<Url>, bool)> {
     let mut formatted_url = url.trim().to_string();
-    // Skip any empty URLs
-    if url == "" || url == "/" || url == "#" || url.starts_with("?") || 
-        url == " " || url == "\\\"" || url == "..//"{
+    if formatted_url.starts_with("www") || formatted_url.starts_with("http") {
+        // This is a valid URL
+        return Ok(formatted_url);
+    } else if let Some(index) = url.find("#") {
+        // Remove any anchors from the URL
+        formatted_url = formatted_url[..index].trim().to_string();
+    } 
+    
+     // Skip any empty URLs
+    if formatted_url == "" || formatted_url == "/" || formatted_url == "#" || formatted_url.starts_with("?") || formatted_url == "\\\"" || formatted_url == "..//"{
         return Err((None, false));
-    }
-    // Remove any anchors from the URL
-    if let Some(index) = url.find("#") {
-        formatted_url = url[..index].to_string();
-        if formatted_url == "" {
-            // Same page, another anchor i.e. "#top"
-            return Err((None, false));
-        }
     }
 
     // Handle any relative paths
@@ -298,9 +331,15 @@ fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Op
         formatted_url.starts_with("tel") || formatted_url.starts_with("sms") || formatted_url.starts_with("facetime") || 
         formatted_url.starts_with("skype") || formatted_url.starts_with("slack") || formatted_url.starts_with("zoom") {
         return Err((None, false));
+    } else if formatted_url.starts_with("itms") || formatted_url.starts_with("market") { 
+        // Apple App Store or Google Play Store
+        return Err((None, false));
     } else if formatted_url.starts_with("javascript") {
         return Err((None, false));
     } else if formatted_url.contains(":invalid") {
+        return Err((None, false));
+    } else if formatted_url.starts_with("data:image") {
+        // Data URL, such as a base64 image path. Maybe these are worth your time.
         return Err((None, false));
     } else if formatted_url.starts_with("clkn/http/") {
         // This is a redirect URL from Google Ads.
@@ -329,7 +368,11 @@ fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Op
         let ref_url = ref_url.unwrap();
         let ref_domain = ref_url.domain().unwrap_or("").to_string();
         formatted_url = format!("{}{}", ref_domain, formatted_url);
-    } else if formatted_url.starts_with("../") {
+    } else if formatted_url.starts_with("../") || formatted_url.starts_with("./../"){
+        // is ./../ the same as ../
+        if formatted_url.starts_with("./") {
+            formatted_url = formatted_url[2..].to_string();
+        }
         // Relative path to a url. such as "../politics/congress".
         let ref_url = Url::parse(referrer_url).unwrap();
         let mut path = Path::new(ref_url.path());
@@ -359,20 +402,23 @@ fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Op
             mutable_ref_url.set_path(format!("{}/", mutable_ref_url.path()).as_str());
         }
         formatted_url = format!("{}{}", mutable_ref_url, formatted_url.trim_start_matches("./"));
-    } else if !formatted_url.starts_with("http") {
+    } else {
         // Likely a relative path to a url. such as "politics/congress.html".
         let ref_url = Url::parse(referrer_url).unwrap();
-        let mut path = Path::new(ref_url.path());
-        if let Some(parent) = path.parent() {
-            path = parent;
-        }
         let mut mutable_ref_url = ref_url.clone();
-        mutable_ref_url.set_path(path.to_str().unwrap());
+        if !mutable_ref_url.as_str().ends_with("/") {
+            let mut path = Path::new(ref_url.path());
+            if let Some(parent) = path.parent() {
+                path = parent;
+            }
+            mutable_ref_url.set_path(path.to_str().unwrap());
+        }
         if !mutable_ref_url.as_str().ends_with("/") && !formatted_url.starts_with("/") {
             mutable_ref_url.set_path(format!("{}/", mutable_ref_url.path()).as_str());
         }
         formatted_url = format!("{}{}", mutable_ref_url, formatted_url);
     }
+
     if consts::LOG_RELATIVE_PATHS {
         if formatted_url != url {
             tools::debug_log(&format!("Formatted Relative URL [{}] to [{}] from [{}]", url, formatted_url, referrer_url));
@@ -383,7 +429,7 @@ fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Op
 
 pub(crate) fn timed_crawl_website(db_conn: Connection, pool: Arc<ThreadPool>, url: Url) {
     let start = Local::now();
-    let db_conn = Arc::new(Mutex::new(db_conn));
+    let db_conn: Arc<Mutex<Connection>> = Arc::new(Mutex::new(db_conn));
     let seen = Arc::new(Mutex::new(HashSet::from_iter([tools::format_url_for_storage(url.to_string())])));
     crawl_website_dfs(db_conn, pool, seen, &url, &"STARTING_URL".to_string());
     let duration: chrono::Duration = Local::now().signed_duration_since(start);
@@ -400,7 +446,15 @@ mod tests {
     #[test]
     fn test_fetch_html() {
         let url = Url::parse("https://www.cnn.com").unwrap();
-        let result = fetch_html(url);
+        let db_conn = match sqlite::connect_sqlite_inmemory() {
+            Ok(connection) => connection.unwrap(),
+            Err(e) => {
+                eprintln!("Failed to connect to SQLite and migrate: {}", e);
+                return;
+            }
+        };
+        let db_conn: Arc<Mutex<Connection>> = Arc::new(Mutex::new(db_conn));
+        let result = fetch_html(&db_conn, url);
         assert!(result.is_ok());
     }
 
@@ -426,7 +480,7 @@ mod tests {
         let result = extract_links(&document);
         assert!(result.is_ok());
         let site_urls = result.unwrap();
-        assert_eq!(site_urls.link_urls, vec!["https://www.cnn.com"]);
+        assert_eq!(site_urls.link_links, vec!["https://www.cnn.com"]);
     }
 
     #[test]

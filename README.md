@@ -18,6 +18,10 @@ This is a rust web crawler, it is designed to collect training data.
 - **CRAWLER_REQUEST_TIMEOUT**: The maximum time the crawler will wait for a request to return.
 - **CRAWLER_REQUEST_DELAY_MS**: The time each crawler thread will wait between visiting sites.
 
+### Data Collection Options
+- **COLLECT_HTML**: A boolean that enables the collection of HTML data in db/html
+- **COLLECT_IMAGES**: A boolean that enables the collection of image data in db/images
+
 ### Logging Options
 - **DEBUG**: A boolean that enables debug output.
 - **LIVE_LOGGING**: A boolean that will log all URLs as they are visited.

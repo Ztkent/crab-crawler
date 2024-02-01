@@ -6,6 +6,14 @@ use std::collections::HashMap;
 use crate::constants as consts;
 use crate::crawl;
 
+// Connect to the sqlite database
+#[cfg(test)]
+pub(crate) fn connect_sqlite_inmemory() -> Result<Option<Connection>, Box<dyn Error>> {
+    // Connect to sqlite
+    let results_db= Connection::open_in_memory()?;
+    Ok(Some(results_db))
+}
+
 // Connect to the sqlite database, and run any migrations
 pub(crate) fn connect_sqlite_and_migrate() -> Result<Option<Connection>, Box<dyn Error>> {
     // Connect to sqlite
@@ -19,7 +27,7 @@ pub(crate) fn connect_sqlite_and_migrate() -> Result<Option<Connection>, Box<dyn
     // Handle any migrations to setup the database
     let migrations = get_sorted_migration_files()?;
     for migration in migrations {
-        results_db.execute(&migration, &[] as &[&dyn ToSql])?;
+        results_db.execute_batch(&migration)?;
     }
     Ok(Some(results_db))
 }
@@ -33,6 +41,14 @@ pub(crate) fn insert_visited_site(conn: &Connection, visited_site: crawl::Visite
     Ok(true)
 }
 
+pub(crate) fn insert_image(conn: &Connection, referrer: &String, url: &String, image: &String, name: &String, success: bool) -> Result<bool, Box<dyn Error>> {
+    let success_as_string = if success { "1" } else { "0" };
+    conn.execute("
+        INSERT INTO images (referrer, url, image, name, success) VALUES (?1, ?2, ?3, ?4, ?5)
+        ", &[&referrer, &url, &image, &name, success_as_string])?;
+    Ok(true)
+}
+
 pub(crate) fn mark_url_complete(conn: &Connection, url: &String) -> Result<bool, Box<dyn Error>> {
     conn.execute("UPDATE visited SET is_complete = 1 WHERE url = ?1", &[url])?;
     Ok(true)
@@ -43,6 +59,13 @@ pub(crate) fn mark_url_blocked(conn: &Connection, url: &String, referrer: &Strin
         INSERT INTO visited (url, referrer, last_visited_at, is_blocked) VALUES (?1, ?2, strftime('%Y-%m-%d %H:%M:%S', 'now'), 1)
         ON CONFLICT(url) DO UPDATE SET referrer = ?2, last_visited_at = strftime('%Y-%m-%d %H:%M:%S', 'now'), is_blocked = 1;
         ", &[url, referrer])?;
+    Ok(true)
+}
+
+pub(crate) fn insert_html(conn: &Connection, url: &String, html: &String) -> Result<bool, Box<dyn Error>> {
+    conn.execute("
+        INSERT INTO html (url, html) VALUES (?1, ?2)
+        ", &[url, html])?;
     Ok(true)
 }
 

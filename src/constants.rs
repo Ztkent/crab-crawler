@@ -2,7 +2,7 @@
 pub(crate) const STARTING_URL: &str = "https://www.cnn.com";
 pub(crate) const PERMITTED_DOMAINS: [&str; 1] = ["www.cnn.com"];
 pub(crate) const BLACKLIST_DOMAINS: [&str; 0] = [];
-pub(crate) const FREE_CRAWL: bool = true;
+pub(crate) const FREE_CRAWL: bool = false;
 //google.com/landing, https://workspace.google.com/
 
 // Crawler Settings
@@ -13,6 +13,12 @@ pub(crate) const RESPECT_ROBOTS: bool = true;
 pub(crate) const CRAWLER_TIMEOUT: u64 = 1200; 
 pub(crate) const CRAWLER_REQUEST_TIMEOUT: u64 = 5; 
 pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 5000; 
+
+// Data Collection Options
+pub(crate) const COLLECT_HTML: bool = false;
+pub(crate) const COLLECT_IMAGES: bool = false;
+// pub(crate) const COLLECT_PDFS: bool = true;
+// pub(crate) const COLLECT_SCREENSHOTS: bool = true;
 
 // Logging Options
 pub(crate) const DEBUG: bool = true;
