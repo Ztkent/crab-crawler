@@ -46,4 +46,4 @@ To enable this:
 - Respects robots.txt files.
 - Supports throttling and timeouts.
 - Handles relative paths and redirects.
-- Stores selected data in a sqlite database for review.
+- Stores selected data in a sqlite database for processing.
