@@ -7,7 +7,7 @@ pub(crate) const FREE_CRAWL: bool = true;
 
 // Crawler Settings
 pub(crate) const MAX_URLS_TO_VISIT: usize = 1000;
-pub(crate) const MAX_THREADS: usize = 4;
+pub(crate) const MAX_THREADS: usize = 8;
 pub(crate) const ROTATE_USER_AGENTS: bool = true;
 pub(crate) const RESPECT_ROBOTS: bool = true;
 pub(crate) const CRAWLER_TIMEOUT: u64 = 1200; 
@@ -16,12 +16,12 @@ pub(crate) const CRAWLER_REQUEST_DELAY_MS: u64 = 5000;
 
 // Data Collection Options
 pub(crate) const COLLECT_HTML: bool = false;
-pub(crate) const COLLECT_IMAGES: bool = false;
+pub(crate) const COLLECT_IMAGES: bool = true;
 // pub(crate) const COLLECT_PDFS: bool = true;
 // pub(crate) const COLLECT_SCREENSHOTS: bool = true;
 
 // Logging Options
-pub(crate) const DEBUG: bool = true;
+pub(crate) const DEBUG: bool = false;
 pub(crate) const LIVE_LOGGING: bool = true;
 
 // Database Settings
@@ -40,4 +40,4 @@ pub(crate) const USER_AGENTS: [&str; 7] = [USER_AGENT_CHROME, USER_AGENT_FIREFOX
 
 
 // Testing
-pub(crate) const LOG_RELATIVE_PATHS: bool = true;
+pub(crate) const LOG_RELATIVE_PATHS: bool = false;

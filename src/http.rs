@@ -108,7 +108,7 @@ pub(crate) fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<
     } else if formatted_url.starts_with("itms") || formatted_url.starts_with("market") { 
         // Apple App Store or Google Play Store
         return Err((None, false));
-    } else if formatted_url.starts_with("javascript") {
+    } else if formatted_url.starts_with("javascript") || formatted_url.starts_with("vbscript") || formatted_url.starts_with("javscript") {
         return Err((None, false));
     } else if formatted_url.contains(":invalid") {
         return Err((None, false));
