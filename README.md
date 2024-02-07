@@ -59,7 +59,7 @@ You can override these defaults by providing a JSON configuration file with `-c 
 
 ## Output
 The crawler collects data from all visited pages in a SQLite database.  
-To enable this:
+To export this data:
 - set `SQLITE_ENABLED` to `true`
 - set `SQLITE_PATH` to the path of the SQLite database file
 
