@@ -67,12 +67,12 @@ fn main() {
         }
     };
 
-    // Start crawling, with a timeout.
+    // Create a new crawler
     let starting_url = Url::parse(&config.starting_url).expect("Failed to parse starting URL");
     let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(config.max_threads).build().unwrap());
-    // Create a new crawler
     let crawler = crawl::Crawler::new(config, conn, pool);
 
+    // Start crawling, with a timeout.
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         crawler.timed_crawl_website(starting_url);
