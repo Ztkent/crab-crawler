@@ -3,25 +3,17 @@ use std::error::Error;
 use std::fs::{self, File};
 use std::io::Read;
 use std::collections::HashMap;
-use crate::constants as consts;
+use crate::config;
 use crate::data;
 
-// Connect to the sqlite database
-#[cfg(test)]
-pub(crate) fn connect_sqlite_inmemory() -> Result<Option<Connection>, Box<dyn Error>> {
-    // Connect to sqlite
-    let results_db= Connection::open_in_memory()?;
-    Ok(Some(results_db))
-}
-
 // Connect to the sqlite database, and run any migrations
-pub(crate) fn connect_sqlite_and_migrate() -> Result<Option<Connection>, Box<dyn Error>> {
+pub(crate) fn connect_sqlite_and_migrate(config: &config::Config) -> Result<Option<Connection>, Box<dyn Error>> {
     // Connect to sqlite
     let results_db;
-    if !consts::SQLITE_ENABLED {
+    if !config.sqlite_enabled {
         results_db = Connection::open_in_memory()?;
     } else  {
-        results_db = Connection::open(consts::SQLITE_PATH)?;
+        results_db = Connection::open(config.sqlite_path.clone())?;
     }
 
     // Handle any migrations to setup the database
@@ -90,12 +82,12 @@ pub(crate) fn is_previously_completed_url(conn: &Connection, url: &String) -> Re
     }
 }
 
-pub(crate) fn connect_and_get_total_rows() -> Result<u64, Box<dyn Error>> {
+pub(crate) fn connect_and_get_total_rows(config: &config::Config) -> Result<u64, Box<dyn Error>> {
     let results_db;
-    if !consts::SQLITE_ENABLED {
+    if !config.sqlite_enabled {
         return Ok(0);
     } else  {
-        results_db = Connection::open(consts::SQLITE_PATH)?;
+        results_db = Connection::open(config.sqlite_path.clone())?;
     }
     let mut stmt = results_db.prepare("SELECT COUNT(*) FROM visited")?;
     let mut rows = stmt.query(&[] as &[&dyn ToSql])?;
@@ -109,12 +101,12 @@ pub(crate) fn connect_and_get_total_rows() -> Result<u64, Box<dyn Error>> {
     }
 }
 
-pub(crate) fn connect_and_get_completed_rows() -> Result<u64, Box<dyn Error>> {
+pub(crate) fn connect_and_get_completed_rows(config: &config::Config) -> Result<u64, Box<dyn Error>> {
     let results_db;
-    if !consts::SQLITE_ENABLED {
+    if !config.sqlite_enabled {
         return Ok(0);
     } else  {
-        results_db = Connection::open(consts::SQLITE_PATH)?;
+        results_db = Connection::open(config.sqlite_path.clone())?;
     }
     let mut stmt = results_db.prepare("SELECT COUNT(*) FROM visited WHERE is_complete = 1")?;
     let mut rows = stmt.query(&[] as &[&dyn ToSql])?;

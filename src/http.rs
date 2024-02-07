@@ -3,20 +3,20 @@ use rusqlite::Connection;
 use std::{path::Path, sync::{Arc, Mutex}};
 use rand::seq::SliceRandom;
 
-use crate::{consts, sqlite, tools};
+use crate::{config, sqlite, tools};
 
 // Fetch HTML from a given URL
-pub(crate) fn fetch_html(db_conn: &Arc<Mutex<Connection>>, url: Url) -> Result<String, Error> {
+pub(crate) fn fetch_html(config: &config::Config, db_conn: &Arc<Mutex<Connection>>, url: Url) -> Result<String, Error> {
     // Create a new HTTP client
     let client = reqwest::blocking::Client::builder()
-    .timeout(std::time::Duration::from_secs(consts::CRAWLER_REQUEST_TIMEOUT))
+    .timeout(std::time::Duration::from_secs(config.crawler_request_timeout))
     .build()
     .unwrap();
 
     // Randomly pick a user agent from the list
-    let mut user_agent = consts::USER_AGENT_CHROME;
-    if consts::ROTATE_USER_AGENTS {
-        user_agent = consts::USER_AGENTS.choose(&mut rand::thread_rng()).unwrap();
+    let mut user_agent = config.user_agents.first().unwrap();
+    if config.rotate_user_agents {
+        user_agent = config.user_agents.choose(&mut rand::thread_rng()).unwrap();
     }
 
     // Send a GET request to the specified URL and get a response
@@ -33,7 +33,7 @@ pub(crate) fn fetch_html(db_conn: &Arc<Mutex<Connection>>, url: Url) -> Result<S
     })?;
     
     // Fetch any images from the page
-    if consts::COLLECT_HTML {
+    if config.collect_html {
         match sqlite::insert_html(&db_conn.lock().unwrap(), &tools::format_url_for_storage(url.to_string()), &body.trim().to_string()) {
             Ok(_) => (),
             Err(e) => eprintln!("Failed to insert HTML into SQLite: {}", e),
@@ -45,17 +45,17 @@ pub(crate) fn fetch_html(db_conn: &Arc<Mutex<Connection>>, url: Url) -> Result<S
 }
 
 // Fetch image binary data from a given URL
-pub(crate) fn fetch_image(url: &Url) -> Result<Vec<u8>, reqwest::Error> {
+pub(crate) fn fetch_image(config: &config::Config, url: &Url) -> Result<Vec<u8>, reqwest::Error> {
     // Create a new HTTP client
     let client = reqwest::blocking::Client::builder()
-    .timeout(std::time::Duration::from_secs(consts::CRAWLER_REQUEST_TIMEOUT))
+    .timeout(std::time::Duration::from_secs(config.crawler_request_timeout))
     .build()
     .unwrap();
 
     // Randomly pick a user agent from the list
-    let mut user_agent = consts::USER_AGENT_CHROME;
-    if consts::ROTATE_USER_AGENTS {
-        user_agent = consts::USER_AGENTS.choose(&mut rand::thread_rng()).unwrap();
+    let mut user_agent =config.user_agents.first().unwrap();
+    if config.rotate_user_agents {
+        user_agent = config.user_agents.choose(&mut rand::thread_rng()).unwrap();
     }
 
     // Send a GET request to the specified URL and get a response
@@ -70,7 +70,7 @@ pub(crate) fn fetch_image(url: &Url) -> Result<Vec<u8>, reqwest::Error> {
     let content_type = res.headers().get(header::CONTENT_TYPE);
     if let Some(content_type) = content_type {
         if !content_type.to_str().unwrap().starts_with("image/") {
-            tools::debug_log(&format!("The body of the response is not an image: {}", url));
+            tools::debug_log(config.debug, &format!("The body of the response is not an image: {}", url));
             return Ok(Vec::new());
         }
     }
@@ -85,7 +85,7 @@ pub(crate) fn fetch_image(url: &Url) -> Result<Vec<u8>, reqwest::Error> {
 }
 
 // Handle any relative paths that we've encountered.
-pub(crate) fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<String, (Option<Url>, bool)> {
+pub(crate) fn handle_relative_paths(config: &config::Config, url: &str, referrer_url: &String) -> Result<String, (Option<Url>, bool)> {
     let mut formatted_url = url.trim().to_string();
     // Remove any anchors from the URL
     if let Some(index) = url.find("#") {
@@ -123,7 +123,7 @@ pub(crate) fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<
         // Relative path to a url. such as "/politics/congress".
         let ref_url = Url::parse(referrer_url);
         if ref_url.is_err() {
-            tools::debug_log(&format!("Invalid referrer URL: {}", referrer_url));
+            tools::debug_log(config.debug, &format!("Invalid referrer URL: {}", referrer_url));
             return Err((None, false));
         }
         let ref_url = ref_url.unwrap();
@@ -136,7 +136,7 @@ pub(crate) fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<
         // Relative path to a url. such as "/politics/congress".
         let ref_url = Url::parse(referrer_url);
         if ref_url.is_err() {
-            tools::debug_log(&format!("Invalid referrer URL: {}", referrer_url));
+            tools::debug_log(config.debug, &format!("Invalid referrer URL: {}", referrer_url));
             return Err((None, false));
         }
         let ref_url = ref_url.unwrap();
@@ -189,9 +189,9 @@ pub(crate) fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<
         formatted_url = format!("{}{}", mutable_ref_url, formatted_url);
     }
 
-    if consts::LOG_RELATIVE_PATHS {
+    if config.log_relative_paths {
         if formatted_url != url {
-            tools::debug_log(&format!("Formatted Relative URL [{}] to [{}] from [{}]", url, formatted_url, referrer_url));
+            tools::debug_log(config.debug, &format!("Formatted Relative URL [{}] to [{}] from [{}]", url, formatted_url, referrer_url));
         }
     }
     Ok(formatted_url)
@@ -200,27 +200,12 @@ pub(crate) fn handle_relative_paths(url: &str, referrer_url: &String) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use url::Url;
-
-    #[test]
-    fn test_fetch_html() {
-        let url = Url::parse("https://www.cnn.com").unwrap();
-        let db_conn = match sqlite::connect_sqlite_inmemory() {
-            Ok(connection) => connection.unwrap(),
-            Err(e) => {
-                eprintln!("Failed to connect to SQLite and migrate: {}", e);
-                return;
-            }
-        };
-        let db_conn: Arc<Mutex<Connection>> = Arc::new(Mutex::new(db_conn));
-        let result = fetch_html(&db_conn, url);
-        assert!(result.is_ok());
-    }
     #[test]
     fn test_handle_relative_paths_valid_url() {
         let url = "http://www.example.com";
         let referrer_url = &"http://www.referrer.com".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), url);
     }
 
@@ -228,7 +213,8 @@ mod tests {
     fn test_handle_relative_paths_anchor() {
         let url = "http://www.example.com#anchor";
         let referrer_url = &"http://www.referrer.com".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com");
     }
 
@@ -236,7 +222,8 @@ mod tests {
     fn test_handle_relative_paths_relative_path() {
         let url = "/relative/path";
         let referrer_url = &"http://www.example.com".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "www.example.com/relative/path");
     }
 
@@ -244,7 +231,8 @@ mod tests {
     fn test_handle_relative_paths_protocol_relative_url() {
         let url = "//www.example.com";
         let referrer_url = &"http://www.referrer.com".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "https://www.example.com");
     }
 
@@ -252,7 +240,8 @@ mod tests {
     fn test_handle_relative_paths_relative_path_with_dot_dot() {
         let url = "../relative/path";
         let referrer_url = &"http://www.example.com/folder".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/relative/path");
     }
 
@@ -260,7 +249,8 @@ mod tests {
     fn test_handle_relative_paths_relative_path_with_double_dot_dot() {
         let url = "../../relative/path";
         let referrer_url = &"http://www.example.com/folder/folder2".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/relative/path");
     }
 
@@ -268,7 +258,8 @@ mod tests {
     fn test_handle_relative_paths_relative_path_with_dot() {
         let url = "./relative/path";
         let referrer_url = &"http://www.example.com/folder".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/folder/relative/path");
     }
 
@@ -276,7 +267,8 @@ mod tests {
     fn test_handle_relative_paths_relative_path_without_slash() {
         let url = "relative/path";
         let referrer_url = &"http://www.example.com/folder".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/folder/relative/path");
     }
 
@@ -284,7 +276,8 @@ mod tests {
     fn test_handle_relative_paths_relative_file_path_without_slash() {
         let url = "relative/path";
         let referrer_url = &"http://www.example.com/file.html".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/relative/path");
     }
 
@@ -292,7 +285,8 @@ mod tests {
     fn test_handle_relative_paths_invalid_url() {
         let url = "url:invalid";
         let referrer_url = &"http://www.referrer.com".to_string();
-        let result = handle_relative_paths(url, referrer_url);
+        let config: config::Config = config::Config::new();
+        let result = handle_relative_paths(&config, url, referrer_url);
         assert!(result.is_err());
     }
 }

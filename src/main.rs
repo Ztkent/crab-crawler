@@ -12,14 +12,12 @@ mod tools;
 mod sqlite;
 mod http;
 mod data;
-mod constants;
-use constants as consts;
-
+mod config;
 /*
 This is a rust web crawler. It starts from a given URL and follows all links to whitelisted domains.
 With some adjustments, it can be used to collect training data.
 
-Constants:
+Configuration Options:
 // Site Settings
 - `PERMITTED_DOMAINS`: An array of domain names that the crawler is allowed to visit.
 - `BLACKLIST_DOMAINS`: An array of domain names that the crawler is banned from visiting.
@@ -52,8 +50,11 @@ Output:
 */
 
 fn main() {
+    // Create a new config
+    let config: config::Config = config::Config::new();
+    let config_clone = config.clone();
     // Connect to the SQLite database and run any migrations
-    let conn = match sqlite::connect_sqlite_and_migrate() {
+    let conn = match sqlite::connect_sqlite_and_migrate(&config) {
         Ok(connection) => connection.unwrap(),
         Err(e) => {
             eprintln!("Failed to connect to SQLite and migrate: {}", e);
@@ -62,23 +63,26 @@ fn main() {
     };
 
     // Start crawling, with a timeout.
-    let starting_url = Url::parse(consts::STARTING_URL).expect("Failed to parse starting URL");
-    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(consts::MAX_THREADS).build().unwrap());
+    let starting_url = Url::parse(&config.starting_url).expect("Failed to parse starting URL");
+    let pool: Arc<ThreadPool> = Arc::new(ThreadPoolBuilder::new().num_threads(config.max_threads).build().unwrap());
+    // Create a new crawler
+    let crawler = crawl::Crawler::new(config, conn, pool);
+
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
-        crawl::timed_crawl_website(conn, pool, starting_url);
+        crawler.timed_crawl_website(starting_url);
         tx.send(()).ok();
     });
-    
+
     loop {
         // Wait for the job to complete, or a timeout.
-        match rx.recv_timeout(Duration::from_secs(consts::CRAWLER_TIMEOUT)) {
+        match rx.recv_timeout(Duration::from_secs(config_clone.crawler_timeout)) {
             Ok(()) => {
                 println!("Crawler thread finished successfully.");
                 break;
             }
             Err(RecvTimeoutError::Timeout) => {
-                eprintln!("Crawler thread timed-out after {:?} seconds. Aborting...", consts::CRAWLER_TIMEOUT);
+                eprintln!("Crawler thread timed-out after {:?} seconds. Aborting...", config_clone.crawler_timeout);
                 break;
             }
             Err(RecvTimeoutError::Disconnected) => {
@@ -90,7 +94,7 @@ fn main() {
 
     // Print the number of URLs visited
     println!("Visited {} URLs.", data::URLS_VISITED.load(std::sync::atomic::Ordering::SeqCst));
-    if consts::SQLITE_ENABLED {
-        println!("DB Contains {:?} URLs, {:?} complete.", sqlite::connect_and_get_total_rows().unwrap(), sqlite::connect_and_get_completed_rows().unwrap());
+    if config_clone.sqlite_enabled {
+        println!("DB Contains {:?} URLs, {:?} complete.", sqlite::connect_and_get_total_rows(&config_clone).unwrap(), sqlite::connect_and_get_completed_rows(&config_clone).unwrap());
     }
 }

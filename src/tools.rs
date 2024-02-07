@@ -10,19 +10,19 @@ use robotstxt::DefaultMatcher;
 use rusqlite::Connection;
 use scraper::{Html, Selector};
 
-use crate::constants as consts;
+use crate::config;
 use crate::data;
 use crate::http;
 use crate::sqlite;
 
 
-pub(crate) fn debug_log(log_message: &str) {
-    if consts::DEBUG {
+pub(crate) fn debug_log(debug: bool, log_message: &str) {
+    if debug {
         println!("{}", log_message);
     }
 }
 
-pub(crate) fn is_robots_txt_blocked(db_conn: &Arc<Mutex<Connection>>, url: Url, referrer_url: &String) -> bool {
+pub(crate) fn is_robots_txt_blocked(config: &config::Config, db_conn: &Arc<Mutex<Connection>>, url: Url, referrer_url: &String) -> bool {
     // We have to cache this or its death for performance.
     let domain = url.domain().unwrap();
     let robots_txt = INMEMORY_CACHE.get(domain).unwrap_or_else(|| {
@@ -42,12 +42,12 @@ pub(crate) fn is_robots_txt_blocked(db_conn: &Arc<Mutex<Connection>>, url: Url, 
 
     // This can panic if the robots.txt is invalid
     let result = panic::catch_unwind(|| {
-        !DefaultMatcher::default().allowed_by_robots(&robots_txt, consts::USER_AGENTS.into_iter().collect(), url.as_str())
+        !DefaultMatcher::default().allowed_by_robots(&robots_txt, config::USER_AGENTS.into_iter().collect(), url.as_str())
     });
     let blocked = match result {
         Ok(blocked) => blocked,
         Err(_) => {
-            debug_log(&format!("An error occurred while checking if the URL {} is allowed by robots.txt", url));
+            debug_log(config.debug, &format!("An error occurred while checking if the URL {} is allowed by robots.txt", url));
             false
         }
     };
@@ -55,21 +55,21 @@ pub(crate) fn is_robots_txt_blocked(db_conn: &Arc<Mutex<Connection>>, url: Url, 
         let formatted_link_url = format_url_for_storage(url.to_string());
         let formatted_referrer_url = format_url_for_storage(referrer_url.to_string());
         if let Err(e) = sqlite::mark_url_blocked(&mut db_conn.lock().unwrap(), &formatted_link_url, &formatted_referrer_url) {
-            debug_log(&format!("Failed to mark URL {} as blocked in SQLite: {}", url, e));
+            debug_log(config.debug, &format!("Failed to mark URL {} as blocked in SQLite: {}", url, e));
         }
     }
     blocked
 }
 
 // Save image data, and the links to the database
-pub(crate) fn save_image_links(pool: &Arc<ThreadPool>, site_urls: &data::SiteUrls, db_conn: &Arc<Mutex<Connection>>, target_url: &Url) {
+pub(crate) fn save_image_links(config: &config::Config, pool: &Arc<ThreadPool>, site_urls: &data::SiteUrls, db_conn: &Arc<Mutex<Connection>>, target_url: &Url) {
     pool.install(|| {
         site_urls.img_urls.clone().into_par_iter().for_each(|url| {
-            let result = http::fetch_image(&url);
+            let result = http::fetch_image(config, &url);
             let image_data = match &result {
                 Ok(content) => content,
                 Err(e) => {
-                    debug_log(&format!("Failed to fetch image from {}: {}", url, e));
+                    debug_log(config.debug, &format!("Failed to fetch image from {}: {}", url, e));
                     return
                 }
             };
@@ -81,7 +81,7 @@ pub(crate) fn save_image_links(pool: &Arc<ThreadPool>, site_urls: &data::SiteUrl
             // Expect an image name at the end of the url, grab it
             let name = url.path_segments().and_then(|segments| segments.last()).unwrap_or(".jpg");
             let _ = sqlite::insert_image(&mut db_conn.lock().unwrap(), &format_url_for_storage(target_url.to_string()),&format_url_for_storage(url.to_string()), image_data, &name.to_string(), result.is_ok())
-                .map_err(|e| debug_log(&format!("Failed to insert image into SQLite: {}", e)));
+                .map_err(|e| debug_log(config.debug, &format!("Failed to insert image into SQLite: {}", e)));
         });
     });
 }
@@ -116,11 +116,11 @@ pub(crate) fn extract_links(doc: &Html) -> Result<data::SiteLinks, Box<dyn std::
 }
 
 // Save some recursion, remove duplicates and links we've seen.
-pub(crate) fn filter_links(links: Vec<String>, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> HashSet<Url> {
+pub(crate) fn filter_links(config: &config::Config, links: Vec<String>, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> HashSet<Url> {
     let mut links_set: HashSet<Url> = HashSet::new();
     links_set.extend(links.into_iter().filter_map(|mut link: String| {
         // Handle any links that are relative paths
-        link = match http::handle_relative_paths(&link, referrer_url) {
+        link = match http::handle_relative_paths(config, &link, referrer_url) {
             Ok(value) => value,
             Err(_) => {
                 return None;
@@ -128,23 +128,23 @@ pub(crate) fn filter_links(links: Vec<String>, seen: &Arc<Mutex<HashSet<String>>
         };
         
         // Check if the link is valid
-        let (link_url, is_valid) = is_valid_site(&link);
+        let (link_url, is_valid) = is_valid_site(config, &link);
         if is_valid {
             if let Some(link_url) = link_url {
                 let formatted_link_url = format_url_for_storage(link_url.to_string());
                 if seen.lock().unwrap().contains(&formatted_link_url) {
                     // Check if we have already seen this URL
-                    debug_log(&format!("Ignoring previously seen URL: {}", formatted_link_url));
+                    debug_log(config.debug, &format!("Ignoring previously seen URL: {}", formatted_link_url));
                     return None;
                 } else if sqlite::is_previously_completed_url(&mut db_conn.lock().unwrap(), &formatted_link_url).unwrap().unwrap() {
                     // Check if this URL has already been completed
                     seen.lock().unwrap().insert(formatted_link_url.clone());
-                    debug_log(&format!("Ignoring completed URL: {}", formatted_link_url));
+                    debug_log(config.debug, &format!("Ignoring completed URL: {}", formatted_link_url));
                     return None;
-                } else if consts::RESPECT_ROBOTS && is_robots_txt_blocked(db_conn, link_url.clone(), &referrer_url) {
+                } else if config.respect_robots && is_robots_txt_blocked(config, db_conn, link_url.clone(), &referrer_url) {
                     // Check if this URL should be ignored due to robots.txt
                     seen.lock().unwrap().insert(formatted_link_url.clone());
-                    debug_log(&format!("Ignoring robots.txt blocked URL: {}", link_url));
+                    debug_log(config.debug, &format!("Ignoring robots.txt blocked URL: {}", link_url));
                     return None;
                 }
                 seen.lock().unwrap().insert(formatted_link_url.clone());
@@ -156,9 +156,9 @@ pub(crate) fn filter_links(links: Vec<String>, seen: &Arc<Mutex<HashSet<String>>
     links_set
 }
 
-pub(crate) fn filter_links_to_urls(links: data::SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> data::SiteUrls {
-    let link_links_set = filter_links(links.link_links, seen, db_conn, referrer_url);
-    let img_links_set = filter_links(links.img_links, seen, db_conn, referrer_url);
+pub(crate) fn filter_links_to_urls(config: &config::Config, links: data::SiteLinks, seen: &Arc<Mutex<HashSet<String>>>, db_conn: &Arc<Mutex<Connection>>, referrer_url: &String) -> data::SiteUrls {
+    let link_links_set = filter_links(config, links.link_links, seen, db_conn, referrer_url);
+    let img_links_set = filter_links(config, links.img_links, seen, db_conn, referrer_url);
     // Convert the HashSet to a Vec, preventing duplicates.
     let link_urls_vec: Vec<Url> = link_links_set.into_iter().collect();
     let img_urls_vec: Vec<Url> = img_links_set.into_iter().collect();
@@ -169,21 +169,21 @@ pub(crate) fn filter_links_to_urls(links: data::SiteLinks, seen: &Arc<Mutex<Hash
 }
 
 // Determine if a site or relative path is valid.
-pub(crate) fn is_valid_site(url: &str) -> (Option<Url>, bool) {
+pub(crate) fn is_valid_site(config: &config::Config, url: &str) -> (Option<Url>, bool) {
     if let Ok(parsed_url) = Url::parse(&url) {
         // Check if the domain of the URL is in the list of permitted domains.
         if let Some(domain) = parsed_url.domain() {
-            if (consts::FREE_CRAWL || consts::PERMITTED_DOMAINS.iter().any(|&d| domain.eq(d)))
-                  && !consts::BLACKLIST_DOMAINS.iter().any(|&d| domain.eq(d)) {
+            if (config.free_crawl || config.permitted_domains.iter().any(|d| domain.eq(d)))
+                  && !config.blacklist_domains.iter().any(|d| domain.eq(d)) {
                 return (Some(parsed_url), true);
             } else {
                 // If the domain isn't in the list of permitted domains..
-                debug_log(&format!("Domain {} isn't in the list of permitted domains: {:?}", domain, parsed_url));
+                debug_log(config.debug, &format!("Domain {} isn't in the list of permitted domains: {:?}", domain, parsed_url));
                 return (Some(parsed_url), false);
             }
         } else {
             // If the URL doesn't have a domain..
-            debug_log(&format!("URL {} doesn't have a domain", url));
+            debug_log(config.debug, &format!("URL {} doesn't have a domain", url));
             return (Some(parsed_url), false);
         }
     }
@@ -273,7 +273,8 @@ mod tests {
     #[test]
     fn test_is_valid_site() {
         let url = "https://www.cnn.com";
-        let (_, is_valid) = is_valid_site(url);
+        let config: config::Config = config::Config::new();
+        let (_, is_valid) = is_valid_site(&config, url);
         assert!(is_valid);
     }
 }
