@@ -19,4 +19,6 @@ rusqlite = {version = "*", features = ["bundled"]}
 rand = "*"
 robotstxt = "*"
 lazy_static = "*"
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
 

@@ -3,6 +3,20 @@ This is a rust web crawler, it is designed to collect training data from the web
 
 ## Configuration
 
+The crawler supports configuration through a JSON file.
+By default, the crawler uses the constants defined in src/constants.rs. 
+
+You can override these defaults by providing a JSON configuration file with `-c your_config.json`.  
+
+Here's an example config.json:
+```json
+{
+  "starting_url": "https://www.example.com",
+  "max_urls_to_visit": 500,
+  "debug": true
+}
+```
+
 ### Site Settings
 - **STARTING_URL**: The URL that the crawler starts from.
 - **PERMITTED_DOMAINS**: A list of domain names that the crawler is allowed to visit.

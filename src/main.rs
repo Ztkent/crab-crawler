@@ -6,13 +6,14 @@ use std::{
     sync::mpsc::{self, RecvTimeoutError},
     time::Duration,
 };
-
 mod crawl;
 mod tools;
 mod sqlite;
 mod http;
 mod data;
 mod config;
+mod constants;
+
 /*
 This is a rust web crawler. It starts from a given URL and follows all links to whitelisted domains.
 With some adjustments, it can be used to collect training data.
@@ -50,9 +51,13 @@ Output:
 */
 
 fn main() {
+    // Check if the user defined a custom config file
+    let config_path = tools::get_config_path();
+
     // Create a new config
-    let config: config::Config = config::Config::new();
+    let config = config::Config::new(config_path);
     let config_clone = config.clone();
+    
     // Connect to the SQLite database and run any migrations
     let conn = match sqlite::connect_sqlite_and_migrate(&config) {
         Ok(connection) => connection.unwrap(),

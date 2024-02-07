@@ -204,7 +204,7 @@ mod tests {
     fn test_handle_relative_paths_valid_url() {
         let url = "http://www.example.com";
         let referrer_url = &"http://www.referrer.com".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), url);
     }
@@ -213,7 +213,7 @@ mod tests {
     fn test_handle_relative_paths_anchor() {
         let url = "http://www.example.com#anchor";
         let referrer_url = &"http://www.referrer.com".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com");
     }
@@ -222,7 +222,7 @@ mod tests {
     fn test_handle_relative_paths_relative_path() {
         let url = "/relative/path";
         let referrer_url = &"http://www.example.com".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "www.example.com/relative/path");
     }
@@ -231,7 +231,7 @@ mod tests {
     fn test_handle_relative_paths_protocol_relative_url() {
         let url = "//www.example.com";
         let referrer_url = &"http://www.referrer.com".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "https://www.example.com");
     }
@@ -240,7 +240,7 @@ mod tests {
     fn test_handle_relative_paths_relative_path_with_dot_dot() {
         let url = "../relative/path";
         let referrer_url = &"http://www.example.com/folder".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/relative/path");
     }
@@ -249,7 +249,7 @@ mod tests {
     fn test_handle_relative_paths_relative_path_with_double_dot_dot() {
         let url = "../../relative/path";
         let referrer_url = &"http://www.example.com/folder/folder2".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/relative/path");
     }
@@ -258,7 +258,7 @@ mod tests {
     fn test_handle_relative_paths_relative_path_with_dot() {
         let url = "./relative/path";
         let referrer_url = &"http://www.example.com/folder".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/folder/relative/path");
     }
@@ -267,7 +267,7 @@ mod tests {
     fn test_handle_relative_paths_relative_path_without_slash() {
         let url = "relative/path";
         let referrer_url = &"http://www.example.com/folder".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/folder/relative/path");
     }
@@ -276,7 +276,7 @@ mod tests {
     fn test_handle_relative_paths_relative_file_path_without_slash() {
         let url = "relative/path";
         let referrer_url = &"http://www.example.com/file.html".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert_eq!(result.unwrap(), "http://www.example.com/relative/path");
     }
@@ -285,7 +285,7 @@ mod tests {
     fn test_handle_relative_paths_invalid_url() {
         let url = "url:invalid";
         let referrer_url = &"http://www.referrer.com".to_string();
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let result = handle_relative_paths(&config, url, referrer_url);
         assert!(result.is_err());
     }

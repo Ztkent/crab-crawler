@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::panic;
+use std::env;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -9,12 +10,7 @@ use reqwest::Url;
 use robotstxt::DefaultMatcher;
 use rusqlite::Connection;
 use scraper::{Html, Selector};
-
-use crate::config;
-use crate::data;
-use crate::http;
-use crate::sqlite;
-
+use crate::{config, data, http, sqlite};
 
 pub(crate) fn debug_log(debug: bool, log_message: &str) {
     if debug {
@@ -42,7 +38,7 @@ pub(crate) fn is_robots_txt_blocked(config: &config::Config, db_conn: &Arc<Mutex
 
     // This can panic if the robots.txt is invalid
     let result = panic::catch_unwind(|| {
-        !DefaultMatcher::default().allowed_by_robots(&robots_txt, config::USER_AGENTS.into_iter().collect(), url.as_str())
+        !DefaultMatcher::default().allowed_by_robots(&robots_txt, config.user_agents.iter().map(|s| s.as_str()).collect(), url.as_str())
     });
     let blocked = match result {
         Ok(blocked) => blocked,
@@ -198,6 +194,17 @@ pub(crate) fn format_url_for_storage(url: String) -> String{
     formatted_url
 }
 
+// Get the config path from the command line arguments
+pub(crate) fn get_config_path() -> String {
+    let args: Vec<String> = env::args().collect();
+    let default_config_path = "".to_string();
+    let config_path = args.iter().position(|x| x == "-c")
+    .and_then(|index| args.get(index + 1))
+    .unwrap_or_else(|| &default_config_path)
+    .to_string();
+    config_path
+}
+
 // A simple in-memory cache that uses a HashMap and a Mutex.
 // This is used to cache robots.txt files for each run. 
 struct InMemoryCache {
@@ -273,7 +280,7 @@ mod tests {
     #[test]
     fn test_is_valid_site() {
         let url = "https://www.cnn.com";
-        let config: config::Config = config::Config::new();
+        let config: config::Config = config::Config::new("crab.json".to_string());
         let (_, is_valid) = is_valid_site(&config, url);
         assert!(is_valid);
     }

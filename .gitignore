@@ -5,3 +5,4 @@ Cargo.lock
 db/*.db*
 *.jpg
 *.svg
+crab.json

@@ -1,4 +1,10 @@
-#[derive(Clone)]
+use serde::Deserialize;
+use serde_json::Value;
+use std::fs;
+use crate::constants;
+use crate::tools;
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     // Site Settings
     pub starting_url: String,
@@ -27,211 +33,109 @@ pub struct Config {
     pub sqlite_enabled: bool,
     pub sqlite_path: String,
 
-    // User Agents
+    // Features
     pub user_agents: Vec<String>,
-
-    // Testing
     pub log_relative_paths: bool,
 }
 
-
 impl Config {
-    pub fn new() -> Self {
-        Config { // Default Crawler Config
-            starting_url: "https://www.cnn.com".to_string(),
-            permitted_domains: vec!["www.cnn.com".to_string()],
-            blacklist_domains: vec![],
-            free_crawl: true,
-            max_urls_to_visit: 1000,
-            max_threads: 8,
-            rotate_user_agents: true,
-            respect_robots: true,
-            crawler_timeout: 1200,
-            crawler_request_timeout: 5,
-            crawler_request_delay_ms: 5000,
-            collect_html: false,
-            collect_images: true,
-            debug: false,
-            live_logging: true,
-            sqlite_enabled: true,
-            sqlite_path: "db/crawl_results.db".to_string(),
-            user_agents: USER_AGENTS.iter().map(|&s| s.to_string()).collect(),
-            log_relative_paths: false,
+    pub fn new(path: String) -> Self {
+        let mut config = Config { // Default Crawler Config
+            starting_url: constants::STARTING_URL.to_string(),
+            permitted_domains: constants::PERMITTED_DOMAINS.iter().map(|s| s.to_string()).collect(),
+            blacklist_domains: constants::BLACKLIST_DOMAINS.iter().map(|s| s.to_string()).collect(),
+            free_crawl: constants::FREE_CRAWL,
+            max_urls_to_visit: constants::MAX_URLS_TO_VISIT,
+            max_threads: constants::MAX_THREADS,
+            rotate_user_agents: constants::ROTATE_USER_AGENTS,
+            respect_robots: constants::RESPECT_ROBOTS,
+            crawler_timeout: constants::CRAWLER_TIMEOUT,
+            crawler_request_timeout: constants::CRAWLER_REQUEST_TIMEOUT,
+            crawler_request_delay_ms: constants::CRAWLER_REQUEST_DELAY_MS,
+            collect_html: constants::COLLECT_HTML,
+            collect_images: constants::COLLECT_IMAGES,
+            debug: constants::DEBUG,
+            live_logging: constants::LIVE_LOGGING,
+            sqlite_enabled: constants::SQLITE_ENABLED,
+            sqlite_path: constants::SQLITE_PATH.to_string(),
+            user_agents: constants::USER_AGENTS.iter().map(|&s| s.to_string()).collect(),
+            log_relative_paths: constants::LOG_RELATIVE_PATHS,
+        };
+
+        // Attempt to read and parse the configuration file
+        if path.is_empty() {
+            tools::debug_log(true, "No config file provided, using defaults.");
+            return config;
         }
-    }
-    
-    pub fn set_starting_url(&mut self, url: String) -> &mut Self {
-        self.starting_url = url;
-        self
-    }
-
-    pub fn set_permitted_domains(&mut self, domains: Vec<String>) -> &mut Self {
-        self.permitted_domains = domains;
-        self
-    }
-
-    pub fn set_blacklist_domains(&mut self, domains: Vec<String>) -> &mut Self {
-        self.blacklist_domains = domains;
-        self
-    }
-
-    pub fn set_free_crawl(&mut self, free_crawl: bool) -> &mut Self {
-        self.free_crawl = free_crawl;
-        self
-    }
-
-    pub fn set_max_urls_to_visit(&mut self, max: usize) -> &mut Self {
-        self.max_urls_to_visit = max;
-        self
-    }
-
-    pub fn set_max_threads(&mut self, max: usize) -> &mut Self {
-        self.max_threads = max;
-        self
-    }
-
-    pub fn set_rotate_user_agents(&mut self, rotate: bool) -> &mut Self {
-        self.rotate_user_agents = rotate;
-        self
-    }
-
-    pub fn set_respect_robots(&mut self, respect: bool) -> &mut Self {
-        self.respect_robots = respect;
-        self
-    }
-
-    pub fn set_crawler_timeout(&mut self, timeout: u64) -> &mut Self {
-        self.crawler_timeout = timeout;
-        self
-    }
-
-    pub fn set_crawler_request_timeout(&mut self, timeout: u64) -> &mut Self {
-        self.crawler_request_timeout = timeout;
-        self
-    }
-
-    pub fn set_crawler_request_delay_ms(&mut self, delay: u64) -> &mut Self {
-        self.crawler_request_delay_ms = delay;
-        self
-    }
-
-    pub fn set_collect_html(&mut self, collect: bool) -> &mut Self {
-        self.collect_html = collect;
-        self
-    }
-
-    pub fn set_collect_images(&mut self, collect: bool) -> &mut Self {
-        self.collect_images = collect;
-        self
-    }
-
-    pub fn set_debug(&mut self, debug: bool) -> &mut Self {
-        self.debug = debug;
-        self
-    }
-
-    pub fn set_live_logging(&mut self, live: bool) -> &mut Self {
-        self.live_logging = live;
-        self
-    }
-
-    pub fn set_sqlite_enabled(&mut self, enabled: bool) -> &mut Self {
-        self.sqlite_enabled = enabled;
-        self
-    }
-
-    pub fn set_sqlite_path(&mut self, path: String) -> &mut Self {
-        self.sqlite_path = path;
-        self
-    }
-
-    pub fn set_user_agents(&mut self, agents: Vec<String>) -> &mut Self {
-        self.user_agents = agents;
-        self
-    }
-
-    pub fn set_log_relative_paths(&mut self, log: bool) -> &mut Self {
-        self.log_relative_paths = log;
-        self
-    }
-}
-
-pub const USER_AGENTS: [&str; 7] = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:53.0) Gecko/20100101 Firefox/53.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/603.3.8 (KHTML, like Gecko) Version/10.1.2 Safari/603.3.8",
-    "Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; AS; rv:11.0) like Gecko",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36 Edge/17.17134",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36 OPR/64.0.3417.54",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36 Brave/78.1.3.15",
-];
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_config_setters() {
-        let mut config: Config = Config::new();
-
-        assert_eq!(config.starting_url, "https://www.cnn.com");
-        assert_eq!(config.permitted_domains, vec!["www.cnn.com"]);
-        assert_eq!(config.blacklist_domains, Vec::<String>::new());
-        assert_eq!(config.free_crawl, true);
-        assert_eq!(config.max_urls_to_visit, 1000);
-        assert_eq!(config.max_threads, 8);
-        assert_eq!(config.rotate_user_agents, true);
-        assert_eq!(config.respect_robots, true);
-        assert_eq!(config.crawler_timeout, 1200);
-        assert_eq!(config.crawler_request_timeout, 5);
-        assert_eq!(config.crawler_request_delay_ms, 5000);
-        assert_eq!(config.collect_html, false);
-        assert_eq!(config.collect_images, true);
-        assert_eq!(config.debug, false);
-        assert_eq!(config.live_logging, true);
-        assert_eq!(config.sqlite_enabled, true);
-        assert_eq!(config.sqlite_path, "db/crawl_results.db");
-        assert_eq!(config.user_agents, USER_AGENTS.iter().map(|&s| s.to_string()).collect::<Vec<String>>());
-        assert_eq!(config.log_relative_paths, false);
-
-        config.set_starting_url("https://www.example.com".to_string());
-        config.set_permitted_domains(vec!["www.example.com".to_string()]);
-        config.set_blacklist_domains(vec!["www.blacklisted.com".to_string()]);
-        config.set_free_crawl(false);
-        config.set_max_urls_to_visit(500);
-        config.set_max_threads(4);
-        config.set_rotate_user_agents(false);
-        config.set_respect_robots(false);
-        config.set_crawler_timeout(600);
-        config.set_crawler_request_timeout(10);
-        config.set_crawler_request_delay_ms(10000);
-        config.set_collect_html(true);
-        config.set_collect_images(false);
-        config.set_debug(true);
-        config.set_live_logging(false);
-        config.set_sqlite_enabled(false);
-        config.set_sqlite_path("db/test.db".to_string());
-        config.set_user_agents(vec!["TestAgent".to_string()]);
-        config.set_log_relative_paths(true);
-
-        assert_eq!(config.starting_url, "https://www.example.com");
-        assert_eq!(config.permitted_domains, vec!["www.example.com"]);
-        assert_eq!(config.blacklist_domains, vec!["www.blacklisted.com"]);
-        assert_eq!(config.free_crawl, false);
-        assert_eq!(config.max_urls_to_visit, 500);
-        assert_eq!(config.max_threads, 4);
-        assert_eq!(config.rotate_user_agents, false);
-        assert_eq!(config.respect_robots, false);
-        assert_eq!(config.crawler_timeout, 600);
-        assert_eq!(config.crawler_request_timeout, 10);
-        assert_eq!(config.crawler_request_delay_ms, 10000);
-        assert_eq!(config.collect_html, true);
-        assert_eq!(config.collect_images, false);
-        assert_eq!(config.debug, true);
-        assert_eq!(config.live_logging, false);
-        assert_eq!(config.sqlite_enabled, false);
-        assert_eq!(config.sqlite_path, "db/test.db");
-        assert_eq!(config.user_agents, vec!["TestAgent"]);
-        assert_eq!(config.log_relative_paths, true);
+        
+        match fs::read_to_string(path.clone()) {
+            Ok(contents) => match serde_json::from_str::<Value>(&contents) {
+                Ok(json_config) => {
+                    // Overwrite the defaults with the values from the file
+                    tools::debug_log(true, &format!("Using provided config file: {}", path));
+                    if let Some(starting_url) = json_config.get("starting_url").and_then(Value::as_str) {
+                        config.starting_url = starting_url.to_string();
+                    }
+                    if let Some(permitted_domains) = json_config.get("permitted_domains").and_then(Value::as_array) {
+                        config.permitted_domains = permitted_domains.iter().map(|x| x.as_str().unwrap_or("").to_string()).collect();
+                    }
+                    if let Some(blacklist_domains) = json_config.get("blacklist_domains").and_then(Value::as_array) {
+                        config.blacklist_domains = blacklist_domains.iter().map(|x| x.as_str().unwrap_or("").to_string()).collect();
+                    }
+                    if let Some(free_crawl) = json_config.get("free_crawl").and_then(Value::as_bool) {
+                        config.free_crawl = free_crawl;
+                    }
+                    if let Some(max_urls_to_visit) = json_config.get("max_urls_to_visit").and_then(Value::as_u64) {
+                        config.max_urls_to_visit = max_urls_to_visit as usize;
+                    }
+                    if let Some(max_threads) = json_config.get("max_threads").and_then(Value::as_u64) {
+                        config.max_threads = max_threads as usize;
+                    }
+                    if let Some(rotate_user_agents) = json_config.get("rotate_user_agents").and_then(Value::as_bool) {
+                        config.rotate_user_agents = rotate_user_agents;
+                    }
+                    if let Some(respect_robots) = json_config.get("respect_robots").and_then(Value::as_bool) {
+                        config.respect_robots = respect_robots;
+                    }
+                    if let Some(crawler_timeout) = json_config.get("crawler_timeout").and_then(Value::as_u64) {
+                        config.crawler_timeout = crawler_timeout;
+                    }
+                    if let Some(crawler_request_timeout) = json_config.get("crawler_request_timeout").and_then(Value::as_u64) {
+                        config.crawler_request_timeout = crawler_request_timeout;
+                    }
+                    if let Some(crawler_request_delay_ms) = json_config.get("crawler_request_delay_ms").and_then(Value::as_u64) {
+                        config.crawler_request_delay_ms = crawler_request_delay_ms;
+                    }
+                    if let Some(collect_html) = json_config.get("collect_html").and_then(Value::as_bool) {
+                        config.collect_html = collect_html;
+                    }
+                    if let Some(collect_images) = json_config.get("collect_images").and_then(Value::as_bool) {
+                        config.collect_images = collect_images;
+                    }
+                    if let Some(debug) = json_config.get("debug").and_then(Value::as_bool) {
+                        config.debug = debug;
+                    }
+                    if let Some(live_logging) = json_config.get("live_logging").and_then(Value::as_bool) {
+                        config.live_logging = live_logging;
+                    }
+                    if let Some(sqlite_enabled) = json_config.get("sqlite_enabled").and_then(Value::as_bool) {
+                        config.sqlite_enabled = sqlite_enabled;
+                    }
+                    if let Some(sqlite_path) = json_config.get("sqlite_path").and_then(Value::as_str) {
+                        config.sqlite_path = sqlite_path.to_string();
+                    }
+                    if let Some(user_agents) = json_config.get("user_agents").and_then(Value::as_array) {
+                        config.user_agents = user_agents.iter().map(|x| x.as_str().unwrap_or("").to_string()).collect();
+                    }
+                    if let Some(log_relative_paths) = json_config.get("log_relative_paths").and_then(Value::as_bool) {
+                        config.log_relative_paths = log_relative_paths;
+                    }
+                },
+                Err(err) => tools::debug_log(true, &format!("Failed to parse config file, using defaults: {}", err)),
+            },
+            Err(err) => tools::debug_log(true, &format!("Failed to read config file, using defaults: {}", err)),
+        }
+        
+        config
     }
 }
