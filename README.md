@@ -8,12 +8,25 @@ By default, the crawler uses the constants defined in src/constants.rs.
 
 You can override these defaults by providing a JSON configuration file with `-c your_config.json`.  
 
-Here's an example config.json:
 ```json
-{
+{ // config.json
   "starting_url": "https://www.example.com",
+  "permitted_domains": ["example.com", "anotherexample.com"],
+  "blacklist_domains": ["blacklistedexample.com"],
+  "rotate_user_agents": true,
+  "respect_robots": true,
+  "free_crawl": false,
   "max_urls_to_visit": 500,
-  "debug": true
+  "max_threads": 10,
+  "crawler_timeout": 3600,
+  "crawler_request_timeout": 60,
+  "crawler_request_delay_ms": 5000,
+  "collect_html": true,
+  "collect_images": false,
+  "debug": true,
+  "live_logging": false,
+  "sqlite_enabled": true,
+  "sqlite_path": "/path/to/sqlite.db"
 }
 ```
 
@@ -45,9 +58,6 @@ Here's an example config.json:
 - **SQLITE_PATH**: The path to the SQLite database file.
 
 ## Output
-The crawler outputs the URLs of all visited pages to the console.
-
-### SQLite
 The crawler collects data from all visited pages in a SQLite database.  
 To enable this:
 - set `SQLITE_ENABLED` to `true`
