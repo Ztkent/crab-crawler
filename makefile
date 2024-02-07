@@ -1,4 +1,4 @@
-.PHONY: build run clean test update
+.PHONY: build run clean test update release
 
 build:
 	@cargo build
@@ -14,3 +14,6 @@ test:
 
 update:
 	@cargo update
+
+release:
+	@cargo build --release

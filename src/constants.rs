@@ -25,7 +25,7 @@ pub(crate) const LIVE_LOGGING: bool = true;
 
 // Database Settings
 pub(crate) const SQLITE_ENABLED: bool = true;
-pub(crate) const SQLITE_PATH: &str = "db/crawl_results.db";
+pub(crate) const SQLITE_PATH: &str = "crawl_results.db";
 
 // User Agents
 pub(crate) const USER_AGENT_CHROME: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3";

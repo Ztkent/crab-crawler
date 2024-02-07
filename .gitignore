@@ -6,3 +6,4 @@ db/*.db*
 *.jpg
 *.svg
 crab.json
+data-crawler
