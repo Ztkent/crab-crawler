@@ -3,7 +3,6 @@ This is a rust web crawler, it is designed to collect training data from the web
 
 ## Configuration
 
-The crawler supports configuration through a JSON file.
 By default, the crawler uses the constants defined in src/constants.rs. 
 
 You can override any of these defaults by providing a JSON configuration file with the fields you wish to override `-c your_config.json`.  
