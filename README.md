@@ -8,7 +8,7 @@ By default, the crawler uses the constants defined in src/constants.rs.
 You can override any of these defaults by providing a JSON configuration file with the fields you wish to override `-c your_config.json`.  
 
 ```json
-{ // config.json
+{
   "starting_url": "https://www.example.com",
   "permitted_domains": ["example.com", "anotherexample.com"],
   "blacklist_domains": ["blacklistedexample.com"],
